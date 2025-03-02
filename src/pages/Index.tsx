@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import FileUpload from '@/components/FileUpload';
@@ -15,6 +16,7 @@ const Index = () => {
   const [mappedColumns, setMappedColumns] = useState<MappedColumn[]>([]);
   const [dedupeConfig, setDedupeConfig] = useState<DedupeConfigType | null>(null);
   const [dedupeResult, setDedupeResult] = useState<DedupeResult | null>(null);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   const handleFileLoaded = (data: FileData) => {
     setFileData(data);
@@ -28,20 +30,25 @@ const Index = () => {
     goToNextStep('config');
   };
 
-  const handleConfigComplete = (config: DedupeConfigType) => {
+  const handleConfigComplete = async (config: DedupeConfigType) => {
     setDedupeConfig(config);
     markStepCompleted('config');
     
     if (fileData) {
+      setIsProcessing(true);
+      toast.info('Starting deduplication process...');
+      
       try {
-        const result = deduplicateData(fileData.data, mappedColumns, config);
+        const result = await deduplicateData(fileData.data, mappedColumns, config);
         setDedupeResult(result);
         goToNextStep('results');
         
         toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
       } catch (error) {
         console.error('Deduplication error:', error);
-        toast.error('Error during deduplication process. Please try again.');
+        toast.error(`Error during deduplication process: ${error instanceof Error ? error.message : 'Please try again'}`);
+      } finally {
+        setIsProcessing(false);
       }
     }
   };
@@ -70,7 +77,11 @@ const Index = () => {
         
       case 'config':
         return mappedColumns.length > 0 ? (
-          <DedupeConfig mappedColumns={mappedColumns} onConfigComplete={handleConfigComplete} />
+          <DedupeConfig 
+            mappedColumns={mappedColumns} 
+            onConfigComplete={handleConfigComplete}
+            isProcessing={isProcessing}
+          />
         ) : (
           <div className="text-center">
             <p>Please map columns first</p>

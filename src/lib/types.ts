@@ -14,7 +14,7 @@ export interface MappedColumn {
 }
 
 export interface DedupeConfig {
-  name?: string; // Added name field for saved configurations
+  name?: string;
   comparisons: {
     column: string;
     matchType: 'exact' | 'fuzzy' | 'partial';
@@ -22,6 +22,7 @@ export interface DedupeConfig {
   }[];
   blockingColumns: string[];
   threshold: number;
+  useSplink?: boolean; // Added to toggle between local and Splink backend
 }
 
 export interface SavedConfig {
@@ -43,3 +44,8 @@ export interface DedupeResult {
 export type Step = 'upload' | 'mapping' | 'config' | 'results';
 
 export type DownloadFormat = 'deduplicated' | 'flagged';
+
+export interface SplinkSettings {
+  apiUrl: string;
+  apiKey?: string;
+}

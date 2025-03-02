@@ -1,4 +1,27 @@
-import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig } from './types';
+import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig, SplinkSettings } from './types';
+
+// Default Splink settings
+const DEFAULT_SPLINK_SETTINGS: SplinkSettings = {
+  apiUrl: 'http://localhost:5000/api/deduplicate', // Default to local development server
+};
+
+// Get Splink settings from localStorage or use defaults
+export const getSplinkSettings = (): SplinkSettings => {
+  const settingsJson = localStorage.getItem('splink-settings');
+  if (!settingsJson) return DEFAULT_SPLINK_SETTINGS;
+  
+  try {
+    return JSON.parse(settingsJson);
+  } catch (e) {
+    console.error('Error parsing Splink settings:', e);
+    return DEFAULT_SPLINK_SETTINGS;
+  }
+};
+
+// Save Splink settings to localStorage
+export const saveSplinkSettings = (settings: SplinkSettings): void => {
+  localStorage.setItem('splink-settings', JSON.stringify(settings));
+};
 
 // String normalization functions
 export const normalizeString = (str: string): string => {
@@ -141,8 +164,77 @@ const preprocessDataForComparison = (
   });
 };
 
-// Mock deduplication function (in a real app, this would use Splink)
-export const deduplicateData = (
+// Deduplication using Splink API
+export const deduplicateWithSplink = async (
+  data: any[],
+  mappedColumns: MappedColumn[],
+  config: DedupeConfig
+): Promise<DedupeResult> => {
+  // Get Splink API settings
+  const splinkSettings = getSplinkSettings();
+  
+  // Apply column mapping
+  const processedData = data.map(row => {
+    const newRow: Record<string, any> = {};
+    mappedColumns.forEach(col => {
+      if (col.include && col.mappedName) {
+        newRow[col.mappedName] = row[col.originalName];
+      }
+    });
+    return newRow;
+  });
+  
+  // Preprocess data for better matching
+  const normalizedData = preprocessDataForComparison(processedData, mappedColumns, config);
+  
+  // Prepare payload for Splink API
+  const payload = {
+    data: normalizedData,
+    config: {
+      comparisons: config.comparisons,
+      blocking_columns: config.blockingColumns,
+      threshold: config.threshold
+    }
+  };
+  
+  try {
+    const response = await fetch(splinkSettings.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(splinkSettings.apiKey ? { 'X-API-Key': splinkSettings.apiKey } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Splink API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Transform Splink response to match our DedupeResult interface
+    return {
+      originalRows: result.originalRows || data.length,
+      uniqueRows: result.uniqueRows || 0,
+      duplicateRows: result.duplicateRows || 0,
+      clusters: result.clusters || [],
+      processedData: result.processedData || [],
+      flaggedData: result.flaggedData || normalizedData.map((row, index) => ({
+        ...row,
+        __is_duplicate: result.duplicates?.includes(index) ? 'Yes' : 'No',
+        __cluster_id: result.clusterIds?.[index] || `unknown_${index}`,
+        __record_id: `record_${index}`
+      }))
+    };
+  } catch (error) {
+    console.error('Error calling Splink API:', error);
+    throw new Error('Failed to process data with Splink. Please check your connection and API settings.');
+  }
+};
+
+// Mock deduplication function (for when Splink is not available or chosen)
+export const deduplicateLocally = (
   data: any[],
   mappedColumns: MappedColumn[],
   config: DedupeConfig
@@ -286,6 +378,23 @@ export const deduplicateData = (
     processedData: uniqueRows, // Return only unique rows
     flaggedData: flaggedData, // Return all rows with flags
   };
+};
+
+// Main deduplication function - decides whether to use Splink or local implementation
+export const deduplicateData = async (
+  data: any[],
+  mappedColumns: MappedColumn[],
+  config: DedupeConfig
+): Promise<DedupeResult> => {
+  console.log('Deduplicating with config:', config);
+  
+  // Use Splink if enabled in the config
+  if (config.useSplink) {
+    return await deduplicateWithSplink(data, mappedColumns, config);
+  }
+  
+  // Fall back to local implementation
+  return deduplicateLocally(data, mappedColumns, config);
 };
 
 // Helper function to calculate string similarity (Levenshtein distance based)
