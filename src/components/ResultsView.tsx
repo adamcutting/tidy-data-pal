@@ -1,0 +1,124 @@
+
+import React, { useState, useEffect } from 'react';
+import { Download, FileCheck, Calculator, ArrowRight, BarChart3 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { DedupeResult, FileData } from '@/lib/types';
+import { convertToCSV, downloadCSV } from '@/lib/dedupeService';
+
+interface ResultsViewProps {
+  result: DedupeResult;
+  fileData: FileData;
+}
+
+const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
+  const [csvData, setCsvData] = useState<string>('');
+  
+  useEffect(() => {
+    // Generate CSV from deduplicated data
+    const csv = convertToCSV(result.processedData);
+    setCsvData(csv);
+  }, [result]);
+
+  const handleDownloadResults = () => {
+    const fileName = fileData.fileName.replace(/\.[^/.]+$/, '') + '_deduplicated.csv';
+    downloadCSV(csvData, fileName);
+  };
+
+  const percentReduction = Math.round((result.duplicateRows / result.originalRows) * 100);
+
+  return (
+    <div className="w-full max-w-3xl mx-auto animate-fade-in">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="bg-card rounded-lg border p-6 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+            <Calculator className="h-8 w-8 text-primary" />
+          </div>
+          <h3 className="text-2xl font-bold">{result.uniqueRows}</h3>
+          <p className="text-muted-foreground">Unique Records</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {percentReduction}% reduction from original
+          </p>
+        </div>
+        
+        <div className="bg-card rounded-lg border p-6 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+            <BarChart3 className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold">{result.originalRows}</span>
+            <ArrowRight className="h-5 w-5" />
+            <span className="text-2xl font-bold">{result.uniqueRows}</span>
+          </div>
+          <p className="text-muted-foreground">Total Records</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {result.duplicateRows} duplicates removed
+          </p>
+        </div>
+      </div>
+      
+      <div className="bg-card rounded-lg border overflow-hidden mb-8">
+        <div className="p-4 border-b bg-secondary/50 flex items-center gap-2">
+          <FileCheck className="h-5 w-5 text-primary" />
+          <h3 className="font-medium">Deduplication Results</h3>
+        </div>
+        
+        <div className="p-6">
+          <div className="mb-6">
+            <h4 className="font-medium mb-2">Summary</h4>
+            <ul className="space-y-2 text-sm">
+              <li className="flex justify-between">
+                <span className="text-muted-foreground">Processed file:</span>
+                <span>{fileData.fileName}</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-muted-foreground">Original records:</span>
+                <span>{result.originalRows}</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-muted-foreground">Unique records:</span>
+                <span>{result.uniqueRows}</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-muted-foreground">Duplicate records:</span>
+                <span>{result.duplicateRows}</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-muted-foreground">Duplicate clusters:</span>
+                <span>{result.clusters.filter(c => c.length > 1).length}</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div className="mb-6">
+            <h4 className="font-medium mb-2">Preview</h4>
+            <div className="bg-muted/40 rounded-md p-3 overflow-auto max-h-[200px] text-sm font-mono">
+              {result.processedData.length > 0 ? (
+                <pre>
+                  {Object.keys(result.processedData[0]).join(', ')}{'\n'}
+                  {result.processedData.slice(0, 5).map((row, i) => (
+                    <div key={i} className="text-xs">
+                      {Object.values(row).join(', ')}
+                    </div>
+                  ))}
+                  {result.processedData.length > 5 && '...'}
+                </pre>
+              ) : (
+                <p className="text-muted-foreground text-center">No data to preview</p>
+              )}
+            </div>
+          </div>
+          
+          <Button 
+            onClick={handleDownloadResults} 
+            className="w-full flex items-center justify-center gap-2 btn-transition hover:scale-102"
+          >
+            <Download className="h-4 w-4" />
+            Download Deduplicated Data (.csv)
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ResultsView;
