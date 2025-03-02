@@ -1,8 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Download, FileCheck, Calculator, ArrowRight, BarChart3 } from 'lucide-react';
+import { Download, FileCheck, Calculator, ArrowRight, BarChart3, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DedupeResult, FileData } from '@/lib/types';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { DedupeResult, FileData, DownloadFormat } from '@/lib/types';
 import { convertToCSV, downloadCSV } from '@/lib/dedupeService';
 
 interface ResultsViewProps {
@@ -11,17 +17,26 @@ interface ResultsViewProps {
 }
 
 const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
-  const [csvData, setCsvData] = useState<string>('');
+  const [deduplicatedCSV, setDeduplicatedCSV] = useState<string>('');
+  const [flaggedCSV, setFlaggedCSV] = useState<string>('');
   
   useEffect(() => {
-    // Generate CSV from deduplicated data
-    const csv = convertToCSV(result.processedData);
-    setCsvData(csv);
+    // Generate CSVs from both data sets
+    const deduplicated = convertToCSV(result.processedData);
+    const flagged = convertToCSV(result.flaggedData);
+    
+    setDeduplicatedCSV(deduplicated);
+    setFlaggedCSV(flagged);
   }, [result]);
 
-  const handleDownloadResults = () => {
-    const fileName = fileData.fileName.replace(/\.[^/.]+$/, '') + '_deduplicated.csv';
-    downloadCSV(csvData, fileName);
+  const handleDownload = (format: DownloadFormat) => {
+    const baseFileName = fileData.fileName.replace(/\.[^/.]+$/, '');
+    
+    if (format === 'deduplicated') {
+      downloadCSV(deduplicatedCSV, `${baseFileName}_deduplicated.csv`);
+    } else if (format === 'flagged') {
+      downloadCSV(flaggedCSV, `${baseFileName}_flagged.csv`);
+    }
   };
 
   const percentReduction = Math.round((result.duplicateRows / result.originalRows) * 100);
@@ -108,13 +123,31 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
             </div>
           </div>
           
-          <Button 
-            onClick={handleDownloadResults} 
-            className="w-full flex items-center justify-center gap-2 btn-transition hover:scale-102"
-          >
-            <Download className="h-4 w-4" />
-            Download Deduplicated Data (.csv)
-          </Button>
+          <div className="space-y-4">
+            <h4 className="font-medium mb-2">Download Options</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Button 
+                onClick={() => handleDownload('deduplicated')}
+                className="flex items-center justify-center gap-2 btn-transition"
+              >
+                <Download className="h-4 w-4" />
+                Deduplicated Data
+              </Button>
+              
+              <Button 
+                onClick={() => handleDownload('flagged')}
+                variant="outline"
+                className="flex items-center justify-center gap-2 btn-transition"
+              >
+                <Filter className="h-4 w-4" />
+                Flagged Data
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground pt-2">
+              <p><strong>Deduplicated Data:</strong> Only unique records, duplicates removed</p>
+              <p><strong>Flagged Data:</strong> All records with duplicate flags and cluster IDs</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

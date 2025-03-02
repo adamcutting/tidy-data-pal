@@ -89,12 +89,30 @@ export const deduplicateData = (
   // Get unique rows (first from each cluster)
   const uniqueRows = clusters.map(cluster => processedData[cluster[0]]);
   
+  // Create flagged data with duplicate information
+  const flaggedData = processedData.map((row, index) => {
+    // Find which cluster this row belongs to
+    const clusterIndex = clusters.findIndex(cluster => cluster.includes(index));
+    const cluster = clusters[clusterIndex];
+    
+    // Determine if this row is a duplicate (not the first in its cluster)
+    const isDuplicate = cluster.indexOf(index) !== 0;
+    
+    return {
+      ...row,
+      __is_duplicate: isDuplicate ? 'Yes' : 'No',
+      __cluster_id: clusterIndex >= 0 ? `cluster_${clusterIndex}` : 'unique',
+      __record_id: `record_${index}`
+    };
+  });
+  
   return {
     originalRows: data.length,
     uniqueRows: uniqueRows.length,
     duplicateRows: data.length - uniqueRows.length,
     clusters,
     processedData: uniqueRows, // Return only unique rows
+    flaggedData: flaggedData, // Return all rows with flags
   };
 };
 

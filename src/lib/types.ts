@@ -29,6 +29,9 @@ export interface DedupeResult {
   duplicateRows: number;
   clusters: any[];
   processedData: any[];
+  flaggedData: any[]; // Added this field for data with duplicate flags
 }
 
 export type Step = 'upload' | 'mapping' | 'config' | 'results';
+
+export type DownloadFormat = 'deduplicated' | 'flagged';

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import FileUpload from '@/components/FileUpload';
@@ -33,7 +32,6 @@ const Index = () => {
     setDedupeConfig(config);
     markStepCompleted('config');
     
-    // Process deduplication
     if (fileData) {
       try {
         const result = deduplicateData(fileData.data, mappedColumns, config);
@@ -95,7 +93,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="w-full py-6 px-4 sm:px-6 lg:px-8 border-b">
         <div className="container max-w-screen-xl mx-auto">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -111,7 +108,6 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="container max-w-screen-xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-10">
           <StepIndicator 
@@ -126,7 +122,6 @@ const Index = () => {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="w-full py-6 border-t mt-auto">
         <div className="container max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
