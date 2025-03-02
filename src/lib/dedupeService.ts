@@ -1,5 +1,20 @@
-
 import { FileData, MappedColumn, DedupeConfig, DedupeResult } from './types';
+
+// String normalization functions
+export const normalizeString = (str: string): string => {
+  if (!str) return '';
+  
+  // Convert to lowercase
+  let normalized = str.toLowerCase();
+  
+  // Remove non-alphanumeric characters (except spaces)
+  normalized = normalized.replace(/[^a-z0-9\s]/g, '');
+  
+  // Trim extra spaces
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  
+  return normalized;
+};
 
 // Parse CSV data
 export const parseCSV = (csvData: string): any[] => {
@@ -45,6 +60,31 @@ export const convertToCSV = (data: any[]): string => {
   return csvRows.join('\n');
 };
 
+// Preprocess data for comparison
+const preprocessDataForComparison = (
+  data: any[],
+  mappedColumns: MappedColumn[],
+  config: DedupeConfig
+): any[] => {
+  return data.map(row => {
+    const processedRow = { ...row };
+    
+    // Get all columns that are used in comparisons
+    const comparisonColumns = config.comparisons.map(comp => comp.column);
+    
+    // Normalize values in comparison columns
+    comparisonColumns.forEach(column => {
+      if (processedRow[column]) {
+        // Store both the original and normalized values
+        processedRow[`__original_${column}`] = processedRow[column];
+        processedRow[column] = normalizeString(processedRow[column]);
+      }
+    });
+    
+    return processedRow;
+  });
+};
+
 // Mock deduplication function (in a real app, this would use Splink)
 export const deduplicateData = (
   data: any[],
@@ -67,12 +107,15 @@ export const deduplicateData = (
     return newRow;
   });
   
+  // Preprocess data for better matching
+  const normalizedData = preprocessDataForComparison(processedData, mappedColumns, config);
+  
   // Simple deduplication based on exact matches of blocking columns
   const uniqueMap = new Map();
   const clusters: any[] = [];
   
-  processedData.forEach((row, index) => {
-    // Create a key based on blocking columns
+  normalizedData.forEach((row, index) => {
+    // Create a key based on blocking columns (using normalized values)
     const blockingKey = config.blockingColumns
       .map(col => row[col] || '')
       .join('|');
@@ -86,14 +129,87 @@ export const deduplicateData = (
     }
   });
   
+  // Improve matching within clusters using comparison columns
+  const improvedClusters: any[] = [];
+  
+  clusters.forEach(cluster => {
+    if (cluster.length <= 1) {
+      // No need to compare, add as is
+      improvedClusters.push(cluster);
+      return;
+    }
+    
+    // Create sub-clusters based on comparison columns
+    const subClusters: number[][] = [];
+    const assigned = new Set<number>();
+    
+    // Compare each record with every other record in the cluster
+    for (let i = 0; i < cluster.length; i++) {
+      if (assigned.has(cluster[i])) continue;
+      
+      const subCluster = [cluster[i]];
+      assigned.add(cluster[i]);
+      
+      for (let j = i + 1; j < cluster.length; j++) {
+        if (assigned.has(cluster[j])) continue;
+        
+        // Check if records are similar based on comparison columns
+        const record1 = normalizedData[cluster[i]];
+        const record2 = normalizedData[cluster[j]];
+        
+        let totalScore = 0;
+        let totalWeight = 0;
+        
+        // Compare each field according to the comparison config
+        for (const comp of config.comparisons) {
+          const field1 = record1[comp.column] || '';
+          const field2 = record2[comp.column] || '';
+          
+          let score = 0;
+          
+          // Apply different matching strategies
+          if (comp.matchType === 'exact') {
+            score = field1 === field2 ? 1 : 0;
+          } else if (comp.matchType === 'fuzzy') {
+            score = calculateSimilarity(field1, field2);
+          } else if (comp.matchType === 'partial') {
+            score = field1.includes(field2) || field2.includes(field1) ? 
+              Math.min(field1.length, field2.length) / Math.max(field1.length, field2.length) : 0;
+          }
+          
+          // Apply threshold for non-exact matches
+          if (comp.matchType !== 'exact' && comp.threshold && score < comp.threshold) {
+            score = 0;
+          }
+          
+          totalScore += score;
+          totalWeight += 1;
+        }
+        
+        const similarityScore = totalWeight > 0 ? totalScore / totalWeight : 0;
+        
+        // If similarity is above threshold, add to the same sub-cluster
+        if (similarityScore >= config.threshold) {
+          subCluster.push(cluster[j]);
+          assigned.add(cluster[j]);
+        }
+      }
+      
+      subClusters.push(subCluster);
+    }
+    
+    // Add all sub-clusters to the improved clusters
+    improvedClusters.push(...subClusters);
+  });
+  
   // Get unique rows (first from each cluster)
-  const uniqueRows = clusters.map(cluster => processedData[cluster[0]]);
+  const uniqueRows = improvedClusters.map(cluster => processedData[cluster[0]]);
   
   // Create flagged data with duplicate information
   const flaggedData = processedData.map((row, index) => {
     // Find which cluster this row belongs to
-    const clusterIndex = clusters.findIndex(cluster => cluster.includes(index));
-    const cluster = clusters[clusterIndex];
+    const clusterIndex = improvedClusters.findIndex(cluster => cluster.includes(index));
+    const cluster = improvedClusters[clusterIndex];
     
     // Determine if this row is a duplicate (not the first in its cluster)
     const isDuplicate = cluster.indexOf(index) !== 0;
@@ -110,10 +226,49 @@ export const deduplicateData = (
     originalRows: data.length,
     uniqueRows: uniqueRows.length,
     duplicateRows: data.length - uniqueRows.length,
-    clusters,
+    clusters: improvedClusters,
     processedData: uniqueRows, // Return only unique rows
     flaggedData: flaggedData, // Return all rows with flags
   };
+};
+
+// Helper function to calculate string similarity (Levenshtein distance based)
+const calculateSimilarity = (str1: string, str2: string): number => {
+  if (!str1 && !str2) return 1;
+  if (!str1 || !str2) return 0;
+  
+  // For very short strings, use exact matching
+  if (str1.length <= 2 || str2.length <= 2) {
+    return str1 === str2 ? 1 : 0;
+  }
+  
+  const len1 = str1.length;
+  const len2 = str2.length;
+  
+  // Initialize matrix
+  const matrix: number[][] = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+  
+  // Fill the first row and column
+  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+  
+  // Fill the rest of the matrix
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  
+  // Calculate similarity based on maximum possible distance
+  const maxDistance = Math.max(len1, len2);
+  const distance = matrix[len1][len2];
+  
+  return maxDistance > 0 ? 1 - (distance / maxDistance) : 1;
 };
 
 // Download CSV
