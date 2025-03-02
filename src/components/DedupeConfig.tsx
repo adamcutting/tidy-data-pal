@@ -5,9 +5,43 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { DedupeConfig, MappedColumn } from '@/lib/types';
-import { PlusCircle, XCircle, Settings2, Shield, Gauge } from 'lucide-react';
+import { 
+  DedupeConfig, 
+  MappedColumn, 
+  SavedConfig 
+} from '@/lib/types';
+import { 
+  saveConfiguration, 
+  getConfigurations, 
+  deleteConfiguration 
+} from '@/lib/dedupeService';
+import { 
+  PlusCircle, 
+  XCircle, 
+  Settings2, 
+  Shield, 
+  Gauge, 
+  Save, 
+  Download, 
+  Trash2 
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DedupeConfigProps {
   mappedColumns: MappedColumn[];
@@ -20,16 +54,33 @@ const DedupeConfigComponent: React.FC<DedupeConfigProps> = ({ mappedColumns, onC
   const [threshold, setThreshold] = useState<number>(0.8);
   const [selectedColumn, setSelectedColumn] = useState<string>('');
   const [selectedMatchType, setSelectedMatchType] = useState<'exact' | 'fuzzy' | 'partial'>('exact');
+  
+  // New state for saving/loading
+  const [configName, setConfigName] = useState<string>('');
+  const [savedConfigs, setSavedConfigs] = useState<SavedConfig[]>([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState<boolean>(false);
+  const [loadMenuOpen, setLoadMenuOpen] = useState<boolean>(false);
 
   const includedColumns = mappedColumns
     .filter(col => col.include && col.mappedName)
     .map(col => col.mappedName as string);
 
+  // Load saved configurations on component mount
+  useEffect(() => {
+    loadSavedConfigurations();
+  }, []);
+
+  // Initialize the selected column
   useEffect(() => {
     if (includedColumns.length > 0 && !selectedColumn) {
       setSelectedColumn(includedColumns[0]);
     }
   }, [includedColumns]);
+
+  const loadSavedConfigurations = () => {
+    const configs = getConfigurations();
+    setSavedConfigs(configs);
+  };
 
   const handleAddComparison = () => {
     if (!selectedColumn) {
@@ -87,8 +138,146 @@ const DedupeConfigComponent: React.FC<DedupeConfigProps> = ({ mappedColumns, onC
     toast.success('Deduplication configuration saved');
   };
 
+  const handleSavePreset = () => {
+    if (!configName.trim()) {
+      toast.error('Please enter a configuration name');
+      return;
+    }
+
+    if (comparisons.length === 0) {
+      toast.error('Please add at least one column for comparison');
+      return;
+    }
+
+    try {
+      const config: DedupeConfig = {
+        name: configName.trim(),
+        comparisons,
+        blockingColumns,
+        threshold
+      };
+
+      saveConfiguration(config);
+      loadSavedConfigurations();
+      setSaveDialogOpen(false);
+      setConfigName('');
+      toast.success(`Configuration "${configName}" saved successfully`);
+    } catch (error) {
+      toast.error(`Failed to save configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleLoadConfig = (savedConfig: SavedConfig) => {
+    try {
+      const { config } = savedConfig;
+      
+      // Load the configuration
+      setComparisons(config.comparisons);
+      setBlockingColumns(config.blockingColumns);
+      setThreshold(config.threshold);
+      
+      setLoadMenuOpen(false);
+      toast.success(`Configuration "${savedConfig.name}" loaded successfully`);
+    } catch (error) {
+      toast.error('Failed to load configuration');
+    }
+  };
+
+  const handleDeleteConfig = (configId: string, configName: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent loading the config when deleting
+    
+    if (confirm(`Are you sure you want to delete the configuration "${configName}"?`)) {
+      deleteConfiguration(configId);
+      loadSavedConfigurations();
+      toast.success(`Configuration "${configName}" deleted`);
+    }
+  };
+
   return (
     <div className="w-full max-w-3xl mx-auto animate-fade-in">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold">Configure Deduplication</h2>
+        
+        <div className="flex gap-2">
+          {/* Load Configuration Button */}
+          <DropdownMenu open={loadMenuOpen} onOpenChange={setLoadMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Load Configuration
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-72">
+              {savedConfigs.length === 0 ? (
+                <div className="px-2 py-4 text-center text-muted-foreground text-sm">
+                  No saved configurations found
+                </div>
+              ) : (
+                savedConfigs.map(config => (
+                  <DropdownMenuItem 
+                    key={config.id}
+                    className="flex justify-between items-center cursor-pointer"
+                    onClick={() => handleLoadConfig(config)}
+                  >
+                    <div>
+                      <div className="font-medium">{config.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(config.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      onClick={(e) => handleDeleteConfig(config.id, config.name, e)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          {/* Save Configuration Dialog */}
+          <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+            <DialogTrigger asChild>
+              <Button 
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Save as Preset
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Save Configuration</DialogTitle>
+                <DialogDescription>
+                  Save your current configuration as a preset for future use.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <label className="text-sm font-medium">Configuration Name</label>
+                <Input
+                  value={configName}
+                  onChange={(e) => setConfigName(e.target.value)}
+                  placeholder="Enter a name for this configuration"
+                  className="mt-1"
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleSavePreset}>Save Configuration</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Left column */}
         <div className="space-y-6">

@@ -1,4 +1,4 @@
-import { FileData, MappedColumn, DedupeConfig, DedupeResult } from './types';
+import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig } from './types';
 
 // String normalization functions
 export const normalizeString = (str: string): string => {
@@ -58,6 +58,62 @@ export const convertToCSV = (data: any[]): string => {
   }
   
   return csvRows.join('\n');
+};
+
+// Configuration storage functions
+export const saveConfiguration = (config: DedupeConfig): SavedConfig => {
+  if (!config.name) {
+    throw new Error('Configuration name is required');
+  }
+  
+  const savedConfigs = getConfigurations();
+  
+  // Create a new saved config
+  const newConfig: SavedConfig = {
+    id: generateId(),
+    name: config.name,
+    config,
+    createdAt: Date.now()
+  };
+  
+  // Check if a config with this name already exists
+  const existingIndex = savedConfigs.findIndex(c => c.name === config.name);
+  if (existingIndex >= 0) {
+    // Update the existing config
+    savedConfigs[existingIndex] = newConfig;
+  } else {
+    // Add the new config
+    savedConfigs.push(newConfig);
+  }
+  
+  // Save to localStorage
+  localStorage.setItem('dedupe-configurations', JSON.stringify(savedConfigs));
+  
+  return newConfig;
+};
+
+export const getConfigurations = (): SavedConfig[] => {
+  const configsJson = localStorage.getItem('dedupe-configurations');
+  if (!configsJson) return [];
+  
+  try {
+    return JSON.parse(configsJson);
+  } catch (e) {
+    console.error('Error parsing saved configurations:', e);
+    return [];
+  }
+};
+
+export const deleteConfiguration = (configId: string): void => {
+  const configs = getConfigurations();
+  const updatedConfigs = configs.filter(config => config.id !== configId);
+  localStorage.setItem('dedupe-configurations', JSON.stringify(updatedConfigs));
+};
+
+// Generate a unique ID
+const generateId = (): string => {
+  return Math.random().toString(36).substring(2, 15) + 
+         Math.random().toString(36).substring(2, 15);
 };
 
 // Preprocess data for comparison

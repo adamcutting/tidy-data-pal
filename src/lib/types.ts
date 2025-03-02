@@ -14,6 +14,7 @@ export interface MappedColumn {
 }
 
 export interface DedupeConfig {
+  name?: string; // Added name field for saved configurations
   comparisons: {
     column: string;
     matchType: 'exact' | 'fuzzy' | 'partial';
@@ -21,6 +22,13 @@ export interface DedupeConfig {
   }[];
   blockingColumns: string[];
   threshold: number;
+}
+
+export interface SavedConfig {
+  id: string;
+  name: string;
+  config: DedupeConfig;
+  createdAt: number;
 }
 
 export interface DedupeResult {
