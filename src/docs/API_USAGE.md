@@ -18,6 +18,8 @@ Before using the API, you need to:
 1. Set up and run the Data HQ Dedupe backend server
 2. Create and save deduplication configurations through the UI
 
+> **Note:** For detailed instructions on deploying on Windows Server with IIS, see the [Windows Deployment Guide](./WINDOWS_DEPLOYMENT.md).
+
 ## API Examples
 
 ### Loading Data from MySQL
@@ -156,3 +158,7 @@ Recommended technologies:
 - File system access for storing results
 
 See the API specification documentation for detailed endpoint requirements.
+
+## Windows Server Deployment
+
+For detailed instructions on implementing the API on a Windows Server environment with IIS, please refer to our [Windows Deployment Guide](./WINDOWS_DEPLOYMENT.md).
