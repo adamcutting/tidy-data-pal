@@ -7,7 +7,7 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    --background: 0 0% 100%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -16,7 +16,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 210 100% 50%;
+    --primary: 199 85% 49%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96%;
@@ -33,9 +33,9 @@
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 210 100% 50%;
+    --ring: 199 85% 49%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
   }
 
   * {
@@ -77,4 +77,40 @@
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-opacity-50;
   }
+
+  /* Data HQ specific colors */
+  .bg-datahq-dark {
+    @apply bg-[#403E43];
+  }
+
+  .bg-datahq-blue {
+    @apply bg-[#1EAEDB];
+  }
+
+  .text-datahq-blue {
+    @apply text-[#1EAEDB];
+  }
+
+  .border-datahq-blue {
+    @apply border-[#1EAEDB];
+  }
+
+  .hover-datahq-blue:hover {
+    @apply bg-[#1EAEDB] text-white transition-colors;
+  }
+}
+
+/* Update button styles to match datahq.co.uk */
+button[class*="bg-primary"] {
+  @apply bg-[#1EAEDB] hover:bg-[#33C3F0] text-white transition-colors;
+}
+
+/* Update form input styles */
+input:focus, select:focus, textarea:focus {
+  @apply ring-[#1EAEDB] border-[#1EAEDB];
+}
+
+/* Update link styles */
+a {
+  @apply text-[#1EAEDB] hover:text-[#0FA0CE] transition-colors;
 }

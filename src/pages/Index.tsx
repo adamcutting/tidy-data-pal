@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { Database } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
 import ColumnMapping from '@/components/ColumnMapping';
 import DedupeConfig from '@/components/DedupeConfig';
@@ -104,16 +105,19 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="w-full py-6 px-4 sm:px-6 lg:px-8 border-b">
+      <header className="w-full py-6 px-4 sm:px-6 lg:px-8 border-b bg-[#403E43] text-white">
         <div className="container max-w-screen-xl mx-auto">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight animate-fade-in">
-                Tidy Data Pal
-              </h1>
-              <p className="text-muted-foreground animate-fade-in">
-                Streamline your data by removing duplicates with ease
-              </p>
+            <div className="flex items-center gap-3">
+              <Database className="h-8 w-8 text-[#1EAEDB]" />
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight animate-fade-in">
+                  Data HQ Dedupe
+                </h1>
+                <p className="text-muted-foreground animate-fade-in text-gray-300">
+                  Streamline your data by removing duplicates with ease
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -133,14 +137,14 @@ const Index = () => {
         </div>
       </main>
 
-      <footer className="w-full py-6 border-t mt-auto">
+      <footer className="w-full py-6 border-t mt-auto bg-[#403E43] text-white">
         <div className="container max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-muted-foreground">
-              &copy; {new Date().getFullYear()} Tidy Data Pal. All rights reserved.
+            <p className="text-sm text-gray-300">
+              &copy; {new Date().getFullYear()} Data HQ. All rights reserved.
             </p>
-            <p className="text-xs text-muted-foreground">
-              A tool for simple data deduplication
+            <p className="text-xs text-gray-300">
+              A tool for powerful data deduplication
             </p>
           </div>
         </div>
