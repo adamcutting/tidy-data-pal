@@ -22,7 +22,7 @@ export interface DedupeConfig {
   }[];
   blockingColumns: string[];
   threshold: number;
-  useSplink?: boolean; // Added to toggle between local and Splink backend
+  useSplink?: boolean; // Toggle between local and Splink backend
 }
 
 export interface SavedConfig {
@@ -38,7 +38,8 @@ export interface DedupeResult {
   duplicateRows: number;
   clusters: any[];
   processedData: any[];
-  flaggedData: any[]; // Added this field for data with duplicate flags
+  flaggedData: any[]; // Data with duplicate flags
+  resultId?: string;  // Added for API result reference
 }
 
 export type Step = 'upload' | 'mapping' | 'config' | 'results';
@@ -48,4 +49,54 @@ export type DownloadFormat = 'deduplicated' | 'flagged';
 export interface SplinkSettings {
   apiUrl: string;
   apiKey?: string;
+}
+
+// MySQL connection configuration
+export interface MySQLConfig {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+}
+
+// API request for database data loading
+export interface DatabaseLoadRequest {
+  connectionConfig: MySQLConfig;
+  query: string;  // SQL query or table name
+  isTable: boolean; // Whether the query parameter is a table name or SQL query
+}
+
+// API request for automated deduplication
+export interface AutoDedupeRequest {
+  data: any[];  // Data to deduplicate
+  configId: string;  // ID of saved configuration to use
+  resultLocation?: string; // Optional folder path to save results
+}
+
+// API response for automated deduplication
+export interface AutoDedupeResponse {
+  success: boolean;
+  resultId: string;
+  message: string;
+  stats?: {
+    originalRows: number;
+    uniqueRows: number;
+    duplicateRows: number;
+  };
+  resultLocation?: string;
+}
+
+// Storage for completed dedupe jobs
+export interface DedupeJob {
+  id: string;
+  configId: string;
+  timestamp: number;
+  status: 'completed' | 'failed';
+  stats: {
+    originalRows: number;
+    uniqueRows: number;
+    duplicateRows: number;
+  };
+  resultLocation?: string;
 }
