@@ -60,9 +60,26 @@ export interface MySQLConfig {
   database: string;
 }
 
+// MSSQL connection configuration
+export interface MSSQLConfig {
+  server: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  options?: {
+    encrypt?: boolean;
+    trustServerCertificate?: boolean;
+  }
+}
+
+// Database type for API requests
+export type DatabaseType = 'mysql' | 'mssql';
+
 // API request for database data loading
 export interface DatabaseLoadRequest {
-  connectionConfig: MySQLConfig;
+  databaseType: DatabaseType;
+  connectionConfig: MySQLConfig | MSSQLConfig;
   query: string;  // SQL query or table name
   isTable: boolean; // Whether the query parameter is a table name or SQL query
 }

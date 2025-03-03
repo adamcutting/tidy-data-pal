@@ -1,7 +1,7 @@
 
 # Data HQ Dedupe API Specification
 
-This document outlines the API requirements for the Data HQ Dedupe application to support MySQL data loading and automated deduplication.
+This document outlines the API requirements for the Data HQ Dedupe application to support database connectivity (MySQL and MSSQL) and automated deduplication.
 
 ## Base URL
 
@@ -12,21 +12,42 @@ This document outlines the API requirements for the Data HQ Dedupe application t
 
 ### 1. Database Connection
 
-#### Load data from MySQL
+#### Load data from a database (MySQL or MSSQL)
 
 ```
 POST /database/load
 ```
 
-Request body:
+Request body for MySQL:
 ```json
 {
+  "databaseType": "mysql",
   "connectionConfig": {
     "host": "localhost",
     "port": 3306,
     "user": "username",
     "password": "password",
     "database": "database_name"
+  },
+  "query": "SELECT * FROM customers",
+  "isTable": false
+}
+```
+
+Request body for MSSQL:
+```json
+{
+  "databaseType": "mssql",
+  "connectionConfig": {
+    "server": "localhost",
+    "port": 1433,
+    "user": "username",
+    "password": "password",
+    "database": "database_name",
+    "options": {
+      "encrypt": true,
+      "trustServerCertificate": true
+    }
   },
   "query": "SELECT * FROM customers",
   "isTable": false
@@ -128,7 +149,7 @@ Response (200 OK):
 
 The server needs to:
 
-1. Connect to MySQL databases using provided credentials
+1. Connect to MySQL and/or MSSQL databases using provided credentials
 2. Execute SQL queries or retrieve table data
 3. Run deduplication using saved configurations
 4. Store results in specified locations

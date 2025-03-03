@@ -1,13 +1,13 @@
 
 # Data HQ Dedupe API Usage Guide
 
-This guide explains how to use the Data HQ Dedupe API for automating deduplication workflows and connecting to MySQL databases.
+This guide explains how to use the Data HQ Dedupe API for automating deduplication workflows and connecting to databases (MySQL and Microsoft SQL Server).
 
 ## Overview
 
 The Data HQ Dedupe API allows you to:
 
-1. Load data directly from MySQL databases
+1. Load data directly from MySQL or Microsoft SQL Server databases
 2. Run automated deduplication using saved configurations
 3. Store and retrieve deduplication results
 
@@ -24,11 +24,12 @@ Before using the API, you need to:
 
 ```javascript
 // Example using fetch API
-const loadDatabaseData = async () => {
+const loadMySQLData = async () => {
   const response = await fetch('http://localhost:5000/api/database/load', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      databaseType: 'mysql',
       connectionConfig: {
         host: 'localhost',
         port: 3306,
@@ -42,7 +43,39 @@ const loadDatabaseData = async () => {
   });
   
   const data = await response.json();
-  console.log(`Loaded ${data.rows.length} records`);
+  console.log(`Loaded ${data.rows.length} records from MySQL`);
+  return data.rows;
+};
+```
+
+### Loading Data from Microsoft SQL Server
+
+```javascript
+// Example using fetch API
+const loadMSSQLData = async () => {
+  const response = await fetch('http://localhost:5000/api/database/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      databaseType: 'mssql',
+      connectionConfig: {
+        server: 'localhost',
+        port: 1433,
+        user: 'username',
+        password: 'password',
+        database: 'customers_db',
+        options: {
+          encrypt: true,
+          trustServerCertificate: true
+        }
+      },
+      query: 'SELECT * FROM customers',
+      isTable: false
+    })
+  });
+  
+  const data = await response.json();
+  console.log(`Loaded ${data.rows.length} records from MSSQL`);
   return data.rows;
 };
 ```
@@ -84,7 +117,7 @@ const getResults = async (resultId) => {
 Here's an example of how to set up a complete workflow:
 
 1. **Create a scheduled task** that:
-   - Connects to your MySQL database
+   - Connects to your database (MySQL or MSSQL)
    - Runs a specific query
    - Passes the data to the deduplication service
    - Saves the results
@@ -93,8 +126,8 @@ Here's an example of how to set up a complete workflow:
 ```javascript
 const runScheduledDedupe = async () => {
   try {
-    // 1. Load data from database
-    const data = await loadDatabaseData();
+    // 1. Load data from database (MSSQL in this example)
+    const data = await loadMSSQLData();
     
     // 2. Run deduplication with saved config
     const dedupeResult = await runDedupe(data, 'your_config_id');
@@ -113,13 +146,13 @@ const runScheduledDedupe = async () => {
 
 To fully support these API features, you'll need to implement a backend server that can:
 
-1. Connect to MySQL databases
+1. Connect to MySQL and/or MSSQL databases
 2. Process deduplication requests
 3. Store and manage results
 
 Recommended technologies:
 - Node.js + Express for the API server
-- MySQL client library for database connections
+- MySQL and MSSQL client libraries for database connections
 - File system access for storing results
 
 See the API specification documentation for detailed endpoint requirements.

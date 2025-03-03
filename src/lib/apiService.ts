@@ -5,7 +5,8 @@ import {
   AutoDedupeResponse, 
   DedupeResult, 
   SavedConfig,
-  DedupeJob
+  DedupeJob,
+  DatabaseType
 } from './types';
 import { deduplicateData } from './dedupeService';
 import { getConfigurations } from './dedupeService';
@@ -16,7 +17,7 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
   : 'http://localhost:5000/api'; // Development API path
 
 /**
- * Load data from MySQL database via API
+ * Load data from a database (MySQL or MSSQL) via API
  * @param request Database load request with connection details and query
  * @returns Promise with the loaded data
  */
