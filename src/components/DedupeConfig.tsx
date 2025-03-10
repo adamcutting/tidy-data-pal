@@ -36,7 +36,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
   const [blockingRules, setBlockingRules] = useState<BlockingRule[]>([]);
   const [threshold, setThreshold] = useState<number>(0.8);
   const [useSplink, setUseSplink] = useState<boolean>(false);
-  const [uniqueIdColumn, setUniqueIdColumn] = useState<string>('');
+  const [uniqueIdColumn, setUniqueIdColumn] = useState<string | null>(null);
   
   // Advanced Splink configuration options
   const [advancedConfig, setAdvancedConfig] = useState({
@@ -211,12 +211,15 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
               <Key className="h-4 w-4 text-muted-foreground" />
               <Label htmlFor="unique-id-column">Unique ID Column</Label>
             </div>
-            <Select value={uniqueIdColumn} onValueChange={setUniqueIdColumn}>
+            <Select 
+              value={uniqueIdColumn || "none"} 
+              onValueChange={setUniqueIdColumn}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select a unique identifier column" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No unique ID (auto-generate)</SelectItem>
+                <SelectItem value="none">No unique ID (auto-generate)</SelectItem>
                 {availableColumns.map(column => (
                   <SelectItem key={column} value={column}>{column}</SelectItem>
                 ))}
