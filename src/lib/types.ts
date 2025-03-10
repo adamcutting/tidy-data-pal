@@ -36,6 +36,7 @@ export interface DedupeConfig {
     retainIntermediateCalculations?: boolean;
     trainModel?: boolean;
     clusteringThreshold?: number;
+    uniqueIdColumn?: string; // Added this field for Splink's unique ID requirement
   };
   dataSource: 'file' | 'database';
   databaseConfig?: {

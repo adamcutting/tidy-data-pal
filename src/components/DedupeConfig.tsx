@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ListCheck, ListPlus } from 'lucide-react';
+import { ListCheck, ListPlus, Key } from 'lucide-react';
 
 export interface DedupeConfigProps {
   mappedColumns: { originalName: string; mappedName: string | null; include: boolean }[];
@@ -37,6 +36,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
   const [blockingRules, setBlockingRules] = useState<BlockingRule[]>([]);
   const [threshold, setThreshold] = useState<number>(0.8);
   const [useSplink, setUseSplink] = useState<boolean>(false);
+  const [uniqueIdColumn, setUniqueIdColumn] = useState<string>('');
   
   // Advanced Splink configuration options
   const [advancedConfig, setAdvancedConfig] = useState({
@@ -130,13 +130,14 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
       threshold,
       useSplink,
       dataSource: 'file', // Default to file - will be overridden in parent component
-      // Add advanced Splink configuration if enabled
+      // Add Splink parameters including the unique ID column
       splinkParams: useSplink ? {
         termFrequencyAdjustments: advancedConfig.termFrequencyAdjustments,
         retainMatchingColumns: advancedConfig.retainMatchingColumns,
         retainIntermediateCalculations: advancedConfig.retainIntermediateCalculations,
         trainModel: advancedConfig.trainModel,
-        clusteringThreshold: advancedConfig.clusteringThreshold
+        clusteringThreshold: advancedConfig.clusteringThreshold,
+        uniqueIdColumn: uniqueIdColumn || undefined
       } : undefined
     };
     await onConfigComplete(config);
@@ -203,6 +204,29 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
             Splink provides more accurate results using machine learning and probabilistic matching.
           </p>
         </div>
+
+        {useSplink && (
+          <div className="space-y-2 p-3 border rounded-md bg-muted/40">
+            <div className="flex items-center space-x-2 mb-1">
+              <Key className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="unique-id-column">Unique ID Column</Label>
+            </div>
+            <Select value={uniqueIdColumn} onValueChange={setUniqueIdColumn}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a unique identifier column" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">No unique ID (auto-generate)</SelectItem>
+                {availableColumns.map(column => (
+                  <SelectItem key={column} value={column}>{column}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Select a column that uniquely identifies each record. If none exists, Splink will generate IDs automatically.
+            </p>
+          </div>
+        )}
 
         <div className="border-t pt-4">
           <h3 className="font-medium mb-2">Column Comparisons</h3>
