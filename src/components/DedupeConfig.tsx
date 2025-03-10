@@ -119,11 +119,14 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
           return `${rule.type}:${rule.sourceColumn}`;
         }
       }),
-      derivedBlockingRules: blockingRules.filter(rule => rule.type !== 'column').map(rule => ({
-        type: rule.type,
-        sourceColumn: rule.sourceColumn || '',
-        targetColumn: rule.column
-      })),
+      // Only include derived rules (postcode-district and postcode-sector) in derivedBlockingRules
+      derivedBlockingRules: blockingRules
+        .filter(rule => rule.type !== 'column')
+        .map(rule => ({
+          type: rule.type as 'postcode-district' | 'postcode-sector', // Safe because we filtered out 'column'
+          sourceColumn: rule.sourceColumn || '',
+          targetColumn: rule.column
+        })),
       threshold,
       useSplink,
       dataSource: 'file', // Default to file - will be overridden in parent component
