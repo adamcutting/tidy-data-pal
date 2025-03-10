@@ -16,6 +16,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ListCheck, ListPlus } from 'lucide-react';
 
 export interface DedupeConfigProps {
   mappedColumns: { originalName: string; mappedName: string | null; include: boolean }[];
@@ -23,10 +24,17 @@ export interface DedupeConfigProps {
   isProcessing?: boolean; // Make this prop optional
 }
 
+// Interface for blocking rules
+interface BlockingRule {
+  type: 'column' | 'postcode-district' | 'postcode-sector';
+  column: string;
+  sourceColumn?: string; // For derived rules like postcode district/sector
+}
+
 const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComplete, isProcessing }) => {
   const [configName, setConfigName] = useState<string>('');
   const [comparisons, setComparisons] = useState<{ column: string; matchType: 'exact' | 'fuzzy' | 'partial'; threshold?: number }[]>([]);
-  const [blockingColumns, setBlockingColumns] = useState<string[]>([]);
+  const [blockingRules, setBlockingRules] = useState<BlockingRule[]>([]);
   const [threshold, setThreshold] = useState<number>(0.8);
   const [useSplink, setUseSplink] = useState<boolean>(false);
   
@@ -51,21 +59,44 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
     setComparisons(newComparisons);
   };
 
-  const handleAddBlockingColumn = () => {
-    // Get first available mapped column not already in blocking columns
+  const handleAddBlockingRule = (type: 'column' | 'postcode-district' | 'postcode-sector') => {
+    // Get first available mapped column not already used in a similar blocking rule
     const availableColumn = mappedColumns.find(col => 
       col.include && 
       col.mappedName && 
-      !blockingColumns.includes(col.mappedName)
-    )?.mappedName;
+      !blockingRules.some(rule => 
+        rule.type === type && 
+        (rule.column === col.mappedName || 
+         (type !== 'column' && rule.sourceColumn === col.mappedName))
+      )
+    )?.mappedName || '';
     
-    if (availableColumn) {
-      setBlockingColumns([...blockingColumns, availableColumn]);
+    if (type === 'column') {
+      setBlockingRules([...blockingRules, { type, column: availableColumn }]);
+    } else {
+      // For postcode district/sector, we need to select a source postcode column
+      const possiblePostcodeColumn = mappedColumns.find(col => 
+        col.include && 
+        col.mappedName && 
+        col.mappedName.toLowerCase().includes('postcode')
+      )?.mappedName || availableColumn;
+      
+      setBlockingRules([...blockingRules, { 
+        type, 
+        column: `${type === 'postcode-district' ? 'PostcodeDistrict' : 'PostcodeSector'}`, 
+        sourceColumn: possiblePostcodeColumn 
+      }]);
     }
   };
 
-  const handleRemoveBlockingColumn = (index: number) => {
-    setBlockingColumns(blockingColumns.filter((_, i) => i !== index));
+  const handleRemoveBlockingRule = (index: number) => {
+    setBlockingRules(blockingRules.filter((_, i) => i !== index));
+  };
+
+  const handleBlockingRuleChange = (index: number, field: string, value: string) => {
+    const newBlockingRules = [...blockingRules];
+    newBlockingRules[index][field] = value;
+    setBlockingRules(newBlockingRules);
   };
 
   const handleAdvancedConfigChange = (field: keyof typeof advancedConfig, value: any) => {
@@ -79,7 +110,20 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
     const config: DedupeConfigType = {
       name: configName || `Config_${new Date().toISOString().slice(0, 10)}`,
       comparisons,
-      blockingColumns,
+      // Convert blocking rules to the format expected by the existing code
+      blockingColumns: blockingRules.map(rule => {
+        if (rule.type === 'column') {
+          return rule.column;
+        } else {
+          // For derived columns, we'll include information about the derivation
+          return `${rule.type}:${rule.sourceColumn}`;
+        }
+      }),
+      derivedBlockingRules: blockingRules.filter(rule => rule.type !== 'column').map(rule => ({
+        type: rule.type,
+        sourceColumn: rule.sourceColumn || '',
+        targetColumn: rule.column
+      })),
       threshold,
       useSplink,
       dataSource: 'file', // Default to file - will be overridden in parent component
@@ -232,36 +276,122 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
         </div>
 
         <div className="border-t pt-4">
-          <h3 className="font-medium mb-2">Blocking Columns</h3>
+          <h3 className="font-medium mb-2">Blocking Rules</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Records will only be compared if they have matching values in the blocking columns.
-            This improves performance but may miss some duplicates.
+            Define rules to filter which records should be compared. This improves performance but may miss some duplicates.
           </p>
           
-          {blockingColumns.length > 0 ? (
-            <div className="mb-4 space-y-2">
-              {blockingColumns.map((column, index) => (
-                <div key={index} className="flex items-center justify-between p-2 border rounded-md">
-                  <span>{column}</span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleRemoveBlockingColumn(index)}
-                  >
-                    Remove
-                  </Button>
+          {blockingRules.length > 0 ? (
+            <div className="mb-4 space-y-3">
+              {blockingRules.map((rule, index) => (
+                <div key={index} className="p-3 border rounded-md bg-muted/40">
+                  <div className="grid grid-cols-1 sm:grid-cols-8 gap-4">
+                    <div className="sm:col-span-2">
+                      <Label>Rule Type</Label>
+                      <Select 
+                        value={rule.type} 
+                        onValueChange={(value) => handleBlockingRuleChange(index, 'type', value as any)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Rule type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="column">Direct Column</SelectItem>
+                          <SelectItem value="postcode-district">Postcode District</SelectItem>
+                          <SelectItem value="postcode-sector">Postcode Sector</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {rule.type === 'column' ? (
+                      <div className="sm:col-span-4">
+                        <Label>Column</Label>
+                        <Select 
+                          value={rule.column} 
+                          onValueChange={(value) => handleBlockingRuleChange(index, 'column', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableColumns.map(column => (
+                              <SelectItem key={column} value={column}>
+                                {column}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="sm:col-span-4">
+                          <Label>Source Postcode Column</Label>
+                          <Select 
+                            value={rule.sourceColumn || ''} 
+                            onValueChange={(value) => handleBlockingRuleChange(index, 'sourceColumn', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select postcode column" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableColumns.map(column => (
+                                <SelectItem key={column} value={column}>
+                                  {column}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {rule.type === 'postcode-district' 
+                              ? 'Will extract the first part of the postcode (e.g., "SW1A" from "SW1A 1AA")'
+                              : 'Will extract the outcode plus first digit of incode (e.g., "SW1A1" from "SW1A 1AA")'}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                    
+                    <div className="sm:col-span-2 flex items-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleRemoveBlockingRule(index)}
+                        className="w-full h-10"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <p className="text-sm text-amber-500 mb-4">
-              Warning: No blocking columns defined. This may result in very slow performance with large datasets.
+              Warning: No blocking rules defined. This may result in very slow performance with large datasets.
             </p>
           )}
           
-          <Button onClick={handleAddBlockingColumn} variant="outline" className="mb-4">
-            Add Blocking Column
-          </Button>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button variant="outline" onClick={() => handleAddBlockingRule('column')}>
+              <ListCheck className="h-4 w-4 mr-2" />
+              Add Column Rule
+            </Button>
+            <Button variant="outline" onClick={() => handleAddBlockingRule('postcode-district')}>
+              <ListPlus className="h-4 w-4 mr-2" />
+              Add Postcode District
+            </Button>
+            <Button variant="outline" onClick={() => handleAddBlockingRule('postcode-sector')}>
+              <ListPlus className="h-4 w-4 mr-2" />
+              Add Postcode Sector
+            </Button>
+          </div>
+          
+          <div className="rounded-md bg-amber-50 p-3 mb-4 border border-amber-200">
+            <h4 className="text-sm font-medium text-amber-800 mb-1">About Postcode Rules</h4>
+            <p className="text-xs text-amber-700">
+              <strong>Postcode District:</strong> The first part of a UK postcode (outcode), e.g., "SW1A" from "SW1A 1AA".<br />
+              <strong>Postcode Sector:</strong> Outcode plus first digit of incode, e.g., "SW1A1" from "SW1A 1AA".
+            </p>
+          </div>
         </div>
 
         {useSplink && (

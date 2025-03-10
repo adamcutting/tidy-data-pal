@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -12,6 +13,12 @@ export interface MappedColumn {
   include: boolean;
 }
 
+export interface DerivedBlockingRule {
+  type: 'postcode-district' | 'postcode-sector';
+  sourceColumn: string;
+  targetColumn: string;
+}
+
 export interface DedupeConfig {
   name?: string;
   comparisons: {
@@ -20,6 +27,7 @@ export interface DedupeConfig {
     threshold?: number;
   }[];
   blockingColumns: string[];
+  derivedBlockingRules?: DerivedBlockingRule[];
   threshold: number;
   useSplink?: boolean; // Toggle between local and Splink backend
   splinkParams?: {
