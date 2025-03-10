@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { FileData } from '@/lib/types';
 import { parseCSV } from '@/lib/dedupeService';
+import * as XLSX from 'xlsx';
 
 interface FileUploadProps {
   onFileLoaded: (fileData: FileData) => void;
@@ -46,6 +47,43 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded }) => {
     }
   };
 
+  const parseExcelFile = (buffer: ArrayBuffer, fileName: string): any[] => {
+    try {
+      // Read the Excel file
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      
+      // Get the first worksheet
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Convert to JSON with headers
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      // Extract headers (first row)
+      const headers = jsonData[0] as string[];
+      
+      // Process the data rows into objects
+      const data = [];
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i] as any[];
+        if (row.length > 0) { // Skip empty rows
+          const rowData: Record<string, any> = {};
+          for (let j = 0; j < headers.length; j++) {
+            if (headers[j]) { // Skip empty headers
+              rowData[headers[j]] = row[j] !== undefined ? row[j] : '';
+            }
+          }
+          data.push(rowData);
+        }
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error parsing Excel file:', error);
+      throw new Error('Failed to parse Excel file');
+    }
+  };
+
   const processFile = async (file: File) => {
     setIsLoading(true);
     setFile(file);
@@ -61,14 +99,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded }) => {
     }
 
     try {
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        const result = e.target?.result;
+      if (fileType === 'csv' || fileType === 'txt') {
+        // CSV/TXT processing
+        const reader = new FileReader();
         
-        // For demonstration, only handling CSV/TXT properly
-        // In a real app, would need proper Excel parsing library
-        if (fileType === 'csv' || fileType === 'txt') {
+        reader.onload = (e) => {
+          const result = e.target?.result;
           const csvData = result as string;
           const parsedData = parseCSV(csvData);
           const columns = parsedData.length > 0 ? Object.keys(parsedData[0]) : [];
@@ -82,25 +118,50 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded }) => {
           });
 
           toast.success(`Successfully loaded ${parsedData.length} rows from ${file.name}`);
-        } else {
-          // Mock for Excel files
-          toast.error('Excel parsing is not implemented in this demo. Please use CSV files.');
-          setFile(null);
-        }
+          setIsLoading(false);
+        };
         
-        setIsLoading(false);
-      };
-      
-      reader.onerror = () => {
-        toast.error('Error reading file.');
-        setFile(null);
-        setIsLoading(false);
-      };
-      
-      if (fileType === 'csv' || fileType === 'txt') {
+        reader.onerror = () => {
+          toast.error('Error reading file.');
+          setFile(null);
+          setIsLoading(false);
+        };
+        
         reader.readAsText(file);
-      } else {
-        // For Excel files - in a real app would use proper Excel parser
+      } else if (fileType === 'xlsx' || fileType === 'xls') {
+        // Excel processing
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+          try {
+            const buffer = e.target?.result as ArrayBuffer;
+            const parsedData = parseExcelFile(buffer, file.name);
+            const columns = parsedData.length > 0 ? Object.keys(parsedData[0]) : [];
+            
+            onFileLoaded({
+              fileName: file.name,
+              fileType,
+              data: parsedData,
+              rawData: buffer,
+              columns,
+            });
+
+            toast.success(`Successfully loaded ${parsedData.length} rows from ${file.name}`);
+          } catch (error) {
+            console.error('Excel parsing error:', error);
+            toast.error(`Failed to parse Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setFile(null);
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        
+        reader.onerror = () => {
+          toast.error('Error reading file.');
+          setFile(null);
+          setIsLoading(false);
+        };
+        
         reader.readAsArrayBuffer(file);
       }
     } catch (error) {
@@ -145,7 +206,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded }) => {
             <div className="text-center">
               <h3 className="text-lg font-medium mb-1">Drop your file here</h3>
               <p className="text-muted-foreground text-sm max-w-md">
-                Supported formats: CSV, TXT or Excel
+                Supported formats: CSV, TXT, Excel (.xlsx, .xls)
               </p>
             </div>
             <Button 
