@@ -15,9 +15,10 @@ const StepIndicator: React.FC<StepIndicatorProps> = ({
   completedSteps,
 }) => {
   const steps: { key: Step; label: string }[] = [
-    { key: 'upload', label: 'Upload File' },
+    { key: 'upload', label: 'Upload Data' },
     { key: 'mapping', label: 'Map Columns' },
     { key: 'config', label: 'Configure' },
+    { key: 'progress', label: 'Processing' },
     { key: 'results', label: 'Results' },
   ];
 

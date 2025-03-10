@@ -1,4 +1,3 @@
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -23,6 +22,20 @@ export interface DedupeConfig {
   blockingColumns: string[];
   threshold: number;
   useSplink?: boolean; // Toggle between local and Splink backend
+  splinkParams?: {
+    termFrequencyAdjustments?: boolean;
+    retainMatchingColumns?: boolean;
+    retainIntermediateCalculations?: boolean;
+    trainModel?: boolean;
+    clusteringThreshold?: number;
+  };
+  dataSource: 'file' | 'database';
+  databaseConfig?: {
+    databaseType: DatabaseType;
+    connectionConfig: MySQLConfig | MSSQLConfig;
+    query: string;
+    isTable: boolean;
+  };
 }
 
 export interface SavedConfig {
@@ -40,18 +53,20 @@ export interface DedupeResult {
   processedData: any[];
   flaggedData: any[]; // Data with duplicate flags
   resultId?: string;  // Added for API result reference
+  jobId?: string;     // Added for progress tracking
 }
 
-export type Step = 'upload' | 'mapping' | 'config' | 'results';
+export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results';
 
 export type DownloadFormat = 'deduplicated' | 'flagged';
 
 export interface SplinkSettings {
   apiUrl: string;
   apiKey?: string;
+  pythonPath?: string;
+  scriptPath?: string;
 }
 
-// MySQL connection configuration
 export interface MySQLConfig {
   host: string;
   port: number;
@@ -60,7 +75,6 @@ export interface MySQLConfig {
   database: string;
 }
 
-// MSSQL connection configuration
 export interface MSSQLConfig {
   server: string;
   port: number;
@@ -73,10 +87,8 @@ export interface MSSQLConfig {
   }
 }
 
-// Database type for API requests
 export type DatabaseType = 'mysql' | 'mssql';
 
-// API request for database data loading
 export interface DatabaseLoadRequest {
   databaseType: DatabaseType;
   connectionConfig: MySQLConfig | MSSQLConfig;
@@ -84,14 +96,12 @@ export interface DatabaseLoadRequest {
   isTable: boolean; // Whether the query parameter is a table name or SQL query
 }
 
-// API request for automated deduplication
 export interface AutoDedupeRequest {
   data: any[];  // Data to deduplicate
   configId: string;  // ID of saved configuration to use
   resultLocation?: string; // Optional folder path to save results
 }
 
-// API response for automated deduplication
 export interface AutoDedupeResponse {
   success: boolean;
   resultId: string;
@@ -104,7 +114,6 @@ export interface AutoDedupeResponse {
   resultLocation?: string;
 }
 
-// Storage for completed dedupe jobs
 export interface DedupeJob {
   id: string;
   configId: string;
@@ -116,4 +125,14 @@ export interface DedupeJob {
     duplicateRows: number;
   };
   resultLocation?: string;
+}
+
+export interface DedupeProgress {
+  status: 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering' | 'completed' | 'failed';
+  percentage: number;
+  statusMessage: string;
+  estimatedTimeRemaining?: string;
+  recordsProcessed?: number;
+  totalRecords?: number;
+  error?: string;
 }

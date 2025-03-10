@@ -1,13 +1,26 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
-import FileUpload from '@/components/FileUpload';
+import SourceSelector from '@/components/SourceSelector';
 import ColumnMapping from '@/components/ColumnMapping';
 import DedupeConfig from '@/components/DedupeConfig';
 import ResultsView from '@/components/ResultsView';
+import ProgressIndicator from '@/components/ProgressIndicator';
 import StepIndicator from '@/components/StepIndicator';
-import { FileData, MappedColumn, DedupeConfig as DedupeConfigType, DedupeResult, Step } from '@/lib/types';
+import { 
+  FileData, 
+  MappedColumn, 
+  DedupeConfig as DedupeConfigType, 
+  DedupeResult, 
+  Step, 
+  DedupeProgress,
+  DatabaseType,
+  MySQLConfig,
+  MSSQLConfig
+} from '@/lib/types';
 import { deduplicateData } from '@/lib/dedupeService';
+import { loadDatabaseData, pollDedupeStatus } from '@/lib/sqlService';
 
 const Index = () => {
   const [currentStep, setCurrentStep] = useState<Step>('upload');
@@ -17,11 +30,56 @@ const Index = () => {
   const [dedupeConfig, setDedupeConfig] = useState<DedupeConfigType | null>(null);
   const [dedupeResult, setDedupeResult] = useState<DedupeResult | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [progress, setProgress] = useState<DedupeProgress>({
+    status: 'waiting',
+    percentage: 0,
+    statusMessage: 'Waiting to start...'
+  });
 
   const handleFileLoaded = (data: FileData) => {
     setFileData(data);
     markStepCompleted('upload');
     goToNextStep('mapping');
+  };
+
+  const handleSqlConnect = async (
+    dbType: DatabaseType,
+    config: MySQLConfig | MSSQLConfig,
+    query: string,
+    isTable: boolean
+  ) => {
+    setIsProcessing(true);
+    
+    try {
+      // Load data from the database
+      const data = await loadDatabaseData(
+        dbType, 
+        config, 
+        query, 
+        isTable,
+        setProgress
+      );
+      
+      // Create a FileData object from the database data
+      const dbFileData: FileData = {
+        fileName: isTable ? query : 'sql_query_result',
+        fileType: 'database',
+        data: data,
+        rawData: null,
+        columns: data.length > 0 ? Object.keys(data[0]) : []
+      };
+      
+      setFileData(dbFileData);
+      markStepCompleted('upload');
+      goToNextStep('mapping');
+      
+      toast.success(`Successfully loaded ${data.length} records from database`);
+    } catch (error) {
+      console.error('Database connection error:', error);
+      toast.error(`Failed to connect to database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleMappingComplete = (columns: MappedColumn[]) => {
@@ -31,21 +89,56 @@ const Index = () => {
   };
 
   const handleConfigComplete = async (config: DedupeConfigType) => {
-    setDedupeConfig(config);
+    // Add data source info to the config
+    const fullConfig: DedupeConfigType = {
+      ...config,
+      dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
+    };
+    
+    setDedupeConfig(fullConfig);
     markStepCompleted('config');
     
     if (fileData) {
       setIsProcessing(true);
+      goToNextStep('progress');
+      
+      setProgress({
+        status: 'waiting',
+        percentage: 0,
+        statusMessage: 'Initializing deduplication process...'
+      });
+      
       toast.info('Starting deduplication process...');
       
       try {
-        const result = await deduplicateData(fileData.data, mappedColumns, config);
+        // Start deduplication process
+        const result = await deduplicateData(fileData.data, mappedColumns, fullConfig, 
+          // Progress callback function
+          (progress) => {
+            setProgress(progress);
+          }
+        );
+        
         setDedupeResult(result);
+        markStepCompleted('progress');
         goToNextStep('results');
         
         toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
+        
+        // If we have a job ID, poll for updates until complete
+        if (result.jobId) {
+          pollDedupeStatus(result.jobId, setProgress);
+        }
       } catch (error) {
         console.error('Deduplication error:', error);
+        
+        setProgress({
+          status: 'failed',
+          percentage: 0,
+          statusMessage: 'Deduplication process failed',
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        });
+        
         toast.error(`Error during deduplication process: ${error instanceof Error ? error.message : 'Please try again'}`);
       } finally {
         setIsProcessing(false);
@@ -64,14 +157,20 @@ const Index = () => {
   const renderStepContent = () => {
     switch (currentStep) {
       case 'upload':
-        return <FileUpload onFileLoaded={handleFileLoaded} />;
+        return (
+          <SourceSelector 
+            onFileLoaded={handleFileLoaded} 
+            onSqlConnect={handleSqlConnect}
+            isConnecting={isProcessing}
+          />
+        );
         
       case 'mapping':
         return fileData ? (
           <ColumnMapping fileData={fileData} onMappingComplete={handleMappingComplete} />
         ) : (
           <div className="text-center">
-            <p>Please upload a file first</p>
+            <p>Please upload a file or connect to a database first</p>
           </div>
         );
         
@@ -85,6 +184,13 @@ const Index = () => {
         ) : (
           <div className="text-center">
             <p>Please map columns first</p>
+          </div>
+        );
+      
+      case 'progress':
+        return (
+          <div className="w-full max-w-2xl mx-auto">
+            <ProgressIndicator progress={progress} />
           </div>
         );
         
