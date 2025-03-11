@@ -4,11 +4,11 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { RefreshCw, AlertTriangle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export interface DedupeProgress {
-  status: 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering' | 'completed' | 'failed';
+  status: 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering' | 'completed' | 'failed' | 'cancelled';
   percentage: number;
   statusMessage: string;
   estimatedTimeRemaining?: string;
@@ -21,17 +21,19 @@ interface ProgressIndicatorProps {
   progress: DedupeProgress;
   jobId?: string;
   onRefresh?: () => void;
+  onCancel?: () => void;
 }
 
-const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, onRefresh }) => {
+const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, onRefresh, onCancel }) => {
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
   const [isLongRunning, setIsLongRunning] = useState<boolean>(false);
+  const [isCancelling, setIsCancelling] = useState<boolean>(false);
   
   useEffect(() => {
     let timer: number | null = null;
 
     // Only start the timer if process is running
-    if (progress.status !== 'completed' && progress.status !== 'failed') {
+    if (progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'cancelled') {
       timer = window.setInterval(() => {
         setTimeElapsed(prev => {
           const newTime = prev + 1;
@@ -73,6 +75,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       case 'completed':
         return 'text-green-500';
       case 'failed':
+      case 'cancelled':
         return 'text-red-500';
       default:
         return 'text-primary';
@@ -86,7 +89,23 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
     }
   };
 
-  const isProcessing = progress.status !== 'completed' && progress.status !== 'failed';
+  const handleCancelJob = () => {
+    if (onCancel) {
+      setIsCancelling(true);
+      toast.info("Requesting job cancellation...");
+      onCancel();
+      // Don't reset isCancelling here - let the status update handle that
+    }
+  };
+
+  // Reset cancelling state if status changes to cancelled or failed
+  useEffect(() => {
+    if (progress.status === 'cancelled' || progress.status === 'failed') {
+      setIsCancelling(false);
+    }
+  }, [progress.status]);
+
+  const isProcessing = progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'cancelled';
 
   return (
     <Card className="w-full">
@@ -156,7 +175,18 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       </CardContent>
       
       {isProcessing && (
-        <CardFooter className="pt-0 flex justify-end">
+        <CardFooter className="pt-0 flex justify-between">
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleCancelJob}
+            disabled={isCancelling}
+            className="flex items-center gap-1 text-xs"
+          >
+            <XCircle className="h-3 w-3" />
+            {isCancelling ? 'Cancelling...' : 'Cancel Job'}
+          </Button>
+          
           <Button
             variant="ghost"
             size="sm"

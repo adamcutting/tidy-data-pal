@@ -1,4 +1,3 @@
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -139,12 +138,12 @@ export interface DedupeJob {
   resultLocation?: string;
 }
 
-export interface DedupeProgress {
-  status: 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering' | 'completed' | 'failed';
+export type DedupeProgress = {
+  status: 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering' | 'completed' | 'failed' | 'cancelled';
   percentage: number;
   statusMessage: string;
   estimatedTimeRemaining?: string;
   recordsProcessed?: number;
   totalRecords?: number;
   error?: string;
-}
+};

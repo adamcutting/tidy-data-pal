@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
@@ -21,6 +20,7 @@ import {
 } from '@/lib/types';
 import { deduplicateData } from '@/lib/dedupeService';
 import { loadDatabaseData, pollDedupeStatus } from '@/lib/sqlService';
+import { cancelSplinkJob } from '@/lib/splinkAdapter';
 
 const Index = () => {
   const [currentStep, setCurrentStep] = useState<Step>('upload');
@@ -51,7 +51,6 @@ const Index = () => {
     setIsProcessing(true);
     
     try {
-      // Load data from the database
       const data = await loadDatabaseData(
         dbType, 
         config, 
@@ -60,7 +59,6 @@ const Index = () => {
         setProgress
       );
       
-      // Create a FileData object from the database data
       const dbFileData: FileData = {
         fileName: isTable ? query : 'sql_query_result',
         fileType: 'database',
@@ -89,7 +87,6 @@ const Index = () => {
   };
 
   const handleConfigComplete = async (config: DedupeConfigType) => {
-    // Add data source info to the config
     const fullConfig: DedupeConfigType = {
       ...config,
       dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
@@ -111,9 +108,7 @@ const Index = () => {
       toast.info('Starting deduplication process...');
       
       try {
-        // Start deduplication process
         const result = await deduplicateData(fileData.data, mappedColumns, fullConfig, 
-          // Progress callback function
           (progress) => {
             setProgress(progress);
           }
@@ -125,7 +120,6 @@ const Index = () => {
         
         toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
         
-        // If we have a job ID, poll for updates until complete
         if (result.jobId) {
           pollDedupeStatus(result.jobId, setProgress);
         }
@@ -145,8 +139,7 @@ const Index = () => {
       }
     }
   };
-  
-  // Handle manual refresh of the progress status
+
   const handleRefreshStatus = () => {
     if (dedupeResult?.jobId) {
       setProgress(prev => ({
@@ -154,8 +147,38 @@ const Index = () => {
         statusMessage: `Refreshing status for job ${dedupeResult.jobId}...`
       }));
       
-      // Re-poll the job status
       pollDedupeStatus(dedupeResult.jobId, setProgress);
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (dedupeResult?.jobId) {
+      try {
+        const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/deduplicate';
+        const apiKey = process.env.REACT_APP_API_KEY;
+        
+        const result = await cancelSplinkJob(dedupeResult.jobId, apiBaseUrl, apiKey);
+        
+        if (result.success) {
+          toast.success(result.message);
+          
+          setProgress(prev => ({
+            ...prev,
+            statusMessage: 'Cancellation requested. Waiting for confirmation...'
+          }));
+          
+          setTimeout(() => {
+            if (dedupeResult?.jobId) {
+              pollDedupeStatus(dedupeResult.jobId, setProgress);
+            }
+          }, 1000);
+        } else {
+          toast.error(result.message);
+        }
+      } catch (error) {
+        console.error('Error cancelling job:', error);
+        toast.error(`Failed to cancel job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   };
 
@@ -207,6 +230,7 @@ const Index = () => {
               progress={progress} 
               jobId={dedupeResult?.jobId}
               onRefresh={handleRefreshStatus}
+              onCancel={handleCancelJob}
             />
           </div>
         );

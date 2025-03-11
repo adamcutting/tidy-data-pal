@@ -137,6 +137,44 @@ export const checkSplinkJobStatus = async (
 };
 
 /**
+ * Cancel a running Splink job
+ */
+export const cancelSplinkJob = async (
+  jobId: string,
+  apiBaseUrl: string,
+  apiKey?: string
+): Promise<{success: boolean; message: string}> => {
+  try {
+    // Build the cancel job URL
+    const cancelUrl = `${apiBaseUrl.replace(/\/deduplicate$/, '')}/cancel-job/${jobId}`;
+    
+    const response = await fetch(cancelUrl, {
+      method: 'POST',
+      headers: {
+        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+      }
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || `Failed to cancel job: ${response.statusText}`);
+    }
+
+    return {
+      success: true,
+      message: data.message || 'Job cancellation requested'
+    };
+  } catch (error) {
+    console.error('Error cancelling job:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred while cancelling job'
+    };
+  }
+};
+
+/**
  * Processes the response from the Splink API into the format expected by the application
  */
 export const processSplinkResponse = (
