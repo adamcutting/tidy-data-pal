@@ -21,7 +21,8 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    include: ['mssql', 'mysql2/promise'],
+    include: ['mssql', 'mysql2'],
+    exclude: ['mssql', 'mysql2/promise'],
     esbuildOptions: {
       // Node.js global to browser globalThis
       define: {
@@ -32,7 +33,7 @@ export default defineConfig(({ mode }) => ({
   // Handle Node.js modules
   build: {
     commonjsOptions: {
-      include: ['mssql', 'mysql2/promise', /node_modules/],
+      include: [/node_modules/],
     },
   },
 }));

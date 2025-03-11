@@ -8,7 +8,7 @@ const createMSSQLPool = async (config: MSSQLConfig) => {
   
   try {
     // Dynamically import mssql to avoid issues with SSR/browser environments
-    const mssql = await import('mssql');
+    const sql = await import('mssql');
     
     const poolConfig = {
       server,
@@ -31,7 +31,7 @@ const createMSSQLPool = async (config: MSSQLConfig) => {
     console.log('Creating MSSQL connection pool with config:', 
       { ...poolConfig, password: password ? '***HIDDEN***' : undefined });
     
-    return await new mssql.ConnectionPool(poolConfig).connect();
+    return await new sql.ConnectionPool(poolConfig).connect();
   } catch (error) {
     console.error('Error creating MSSQL connection pool:', error);
     throw new Error(`Failed to create MSSQL connection: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -48,8 +48,8 @@ export const getDatabaseMetadata = async (
 
   if (dbType === 'mssql') {
     try {
-      // Dynamically import mssql
-      const mssql = await import('mssql');
+      // Get database metadata for SQL Server
+      const sql = await import('mssql');
       
       // Create a connection to SQL Server
       const pool = await createMSSQLPool(config as MSSQLConfig);
@@ -89,7 +89,7 @@ export const getDatabaseMetadata = async (
     }
   } else if (dbType === 'mysql') {
     try {
-      // Dynamically import mysql2
+      // Get database metadata for MySQL
       const mysql = await import('mysql2/promise');
       
       const { host, port, user, password, database } = config as MySQLConfig;
@@ -166,10 +166,9 @@ export const loadDatabaseData = async (
     let data: any[] = [];
     
     if (dbType === 'mssql') {
-      // Dynamically import mssql
-      const mssql = await import('mssql');
-      
       // MSSQL Implementation
+      const sql = await import('mssql');
+      
       const pool = await createMSSQLPool(config as MSSQLConfig);
       
       onProgressUpdate({
@@ -191,10 +190,9 @@ export const loadDatabaseData = async (
       await pool.close();
     } 
     else if (dbType === 'mysql') {
-      // Dynamically import mysql2
+      // MySQL Implementation
       const mysql = await import('mysql2/promise');
       
-      // MySQL Implementation
       const { host, port, user, password, database } = config as MySQLConfig;
       
       // Create MySQL connection
