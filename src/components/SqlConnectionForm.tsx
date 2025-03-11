@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -76,12 +77,24 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
         };
       }
 
+      console.log('Fetching database metadata with config:', 
+        { ...config, password: config.password ? '***HIDDEN***' : undefined });
+        
       const metadata = await getDatabaseMetadata(dbType, config);
+      console.log('Received metadata:', metadata);
       setDatabaseMetadata(metadata);
       
+      // Set initial table selection if available
       if (metadata.tables.length > 0 && isTable) {
         setQuery(metadata.tables[0]);
+        setSelectedObjectType('table');
+      } else if (metadata.views.length > 0 && isTable) {
+        setQuery(metadata.views[0]);
+        setSelectedObjectType('view');
       }
+      
+      // Show success message with count of found objects
+      toast.success(`Found ${metadata.tables.length} tables and ${metadata.views.length} views`);
     } catch (error) {
       console.error('Error fetching database metadata:', error);
       toast.error(`Failed to get database objects: ${error instanceof Error ? error.message : 'Unknown error'}`);
