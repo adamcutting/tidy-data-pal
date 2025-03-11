@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,7 @@ interface SplinkSettingsProps {
 
 const SplinkSettings: React.FC<SplinkSettingsProps> = ({ onSettingsChange }) => {
   const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState<SplinkSettingsType>(getSplinkSettings);
+  const [settings, setSettings] = useState<SplinkSettingsType>(getSplinkSettings());
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'untested' | 'success' | 'failed'>('untested');
 
@@ -41,24 +40,23 @@ const SplinkSettings: React.FC<SplinkSettingsProps> = ({ onSettingsChange }) => 
       // Save settings temporarily for the test
       saveSplinkSettings(settings);
       
+      // For the API endpoint, we'll use the /test-connection endpoint
+      const testUrl = settings.apiUrl.replace(/\/deduplicate\/?$/, '') + '/test-connection';
+      
       // Test the connection - simple ping to the API endpoint
-      const response = await fetch(settings.apiUrl, {
-        method: 'OPTIONS',
+      const response = await fetch(testUrl, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           ...(settings.apiKey ? { 'Authorization': `Bearer ${settings.apiKey}` } : {})
         }
       });
       
-      // If we can't use OPTIONS, try a GET request
-      const isSuccessful = response.ok || response.status === 404; // 404 is acceptable because the endpoint might only accept POST
-      
-      setConnectionStatus(isSuccessful ? 'success' : 'failed');
-      
-      // Show feedback
-      if (isSuccessful) {
+      if (response.ok) {
+        setConnectionStatus('success');
         toast.success('Successfully connected to Splink API');
       } else {
+        setConnectionStatus('failed');
         toast.error('Failed to connect to Splink API');
       }
     } catch (error) {
