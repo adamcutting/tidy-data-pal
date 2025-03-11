@@ -1,4 +1,3 @@
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -93,6 +92,8 @@ export interface MSSQLConfig {
   options?: {
     encrypt?: boolean;
     trustServerCertificate?: boolean;
+    authentication?: 'default' | 'windows';
+    domain?: string;
   }
 }
 
@@ -103,6 +104,11 @@ export interface DatabaseLoadRequest {
   connectionConfig: MySQLConfig | MSSQLConfig;
   query: string;  // SQL query or table name
   isTable: boolean; // Whether the query parameter is a table name or SQL query
+}
+
+export interface DatabaseMetadata {
+  tables: string[];
+  views: string[];
 }
 
 export interface AutoDedupeRequest {

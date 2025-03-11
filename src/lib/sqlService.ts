@@ -1,8 +1,26 @@
 
-import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress } from './types';
+import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 
 // Mock polling interval in ms (in a real implementation this would call an actual backend API)
 const POLLING_INTERVAL = 1500;
+
+// Mock function to get database metadata (tables and views)
+export const getDatabaseMetadata = async (
+  dbType: DatabaseType,
+  config: MySQLConfig | MSSQLConfig
+): Promise<DatabaseMetadata> => {
+  // Simulate API call delay
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Generate mock tables and views based on database type
+  const tables = ['customers', 'orders', 'products', 'suppliers', 'employees'];
+  const views = ['vw_customer_orders', 'vw_product_inventory', 'vw_sales_summary'];
+  
+  return {
+    tables,
+    views
+  };
+};
 
 // Mock function to load data from a database
 export const loadDatabaseData = async (
