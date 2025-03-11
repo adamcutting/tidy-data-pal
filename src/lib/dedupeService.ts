@@ -28,14 +28,27 @@ export const saveSplinkSettings = (settings: SplinkSettings): void => {
 export const testSplinkConnection = async (): Promise<boolean> => {
   const splinkSettings = getSplinkSettings();
   try {
-    // Attempt a simple HEAD request to check if the API is available
-    const response = await fetch(splinkSettings.apiUrl, {
-      method: 'HEAD',
+    // Use a proper test endpoint instead of a HEAD request
+    const testUrl = splinkSettings.apiUrl ? 
+      // If apiUrl ends with /deduplicate, replace it with /test-connection
+      splinkSettings.apiUrl.replace(/\/deduplicate$/, '/test-connection') : 
+      'http://localhost:5000/test-connection';
+    
+    console.log("Testing Splink API connection at:", testUrl);
+    
+    const response = await fetch(testUrl, {
+      method: 'GET',
       headers: {
-        ...(splinkSettings.apiKey ? { 'X-API-Key': splinkSettings.apiKey } : {})
+        ...(splinkSettings.apiKey ? { 'Authorization': `Bearer ${splinkSettings.apiKey}` } : {})
       }
     });
-    return response.ok;
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Splink API connection test response:", data);
+      return true;
+    }
+    return false;
   } catch (error) {
     console.warn('Splink API connection test failed:', error);
     return false;
@@ -646,3 +659,4 @@ export const downloadCSV = (csvData: string, fileName: string): void => {
   link.click();
   document.body.removeChild(link);
 };
+

@@ -62,8 +62,6 @@ export const formatDataForSplinkApi = (
   };
 
   // Add output directory if specified in settings
-  // Fix: Get the outputDir from the SplinkSettings which has been loaded separately
-  // This assumes the outputDir is passed from the SplinkSettings component
   if (config.splinkSettings?.outputDir) {
     payload['output_dir'] = config.splinkSettings.outputDir;
   }
@@ -84,6 +82,9 @@ export const processSplinkResponse = (
     const clusterData = apiResponse.cluster_data || [];
     const statistics = apiResponse.statistics || {};
     
+    console.log("Received cluster data:", clusterData.length, "records");
+    console.log("Statistics:", statistics);
+    
     // Calculate unique and duplicate rows
     const originalRows = originalData.length;
     const uniqueRows = statistics.num_clusters || originalData.length;
@@ -102,17 +103,41 @@ export const processSplinkResponse = (
     // Convert Map to array of clusters
     const clusters = Array.from(clusterMap.values());
     
-    // Create flagged data by adding a is_duplicate flag to records
+    // Use the cluster data directly for processedData
+    const processedData = clusterData;
+    
+    // Create flagged data by adding a is_duplicate flag to each record
+    // based on whether it belongs to a cluster with size > 1
     const flaggedData = originalData.map(row => {
-      // Find if this row exists in any cluster with size > 1
-      const isDuplicate = clusters.some(cluster => 
-        cluster.length > 1 && 
-        cluster.some(clusterRecord => 
-          Object.keys(row).every(key => row[key] === clusterRecord[key])
-        )
-      );
+      let isDuplicate = false;
+      let clusterId = null;
       
-      return { ...row, is_duplicate: isDuplicate };
+      // Try to find this record in the cluster data
+      // Note: This is a simplistic approach and might need to be refined
+      // based on your exact data structure and matching logic
+      for (const [id, cluster] of clusterMap.entries()) {
+        if (cluster.length > 1 && 
+            cluster.some((clusterRow: any) => {
+              // Check if this cluster record matches the original row
+              // based on a few key fields (this logic may need adjustment)
+              const keyFields = Object.keys(row).slice(0, 3); // Use first 3 fields as sample
+              return keyFields.every(key => 
+                clusterRow[key] !== undefined && 
+                row[key] !== undefined &&
+                String(clusterRow[key]) === String(row[key])
+              );
+            })) {
+          isDuplicate = true;
+          clusterId = id;
+          break;
+        }
+      }
+      
+      return { 
+        ...row, 
+        is_duplicate: isDuplicate ? 'Yes' : 'No',
+        cluster_id: clusterId || 'unique' 
+      };
     });
     
     return {
@@ -120,7 +145,7 @@ export const processSplinkResponse = (
       uniqueRows,
       duplicateRows,
       clusters,
-      processedData: clusterData,
+      processedData,
       flaggedData,
       resultId: new Date().getTime().toString(),
       jobId: apiResponse.output_path || new Date().getTime().toString()
