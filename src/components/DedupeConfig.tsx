@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { DedupeConfig as DedupeConfigType } from '@/lib/types';
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/accordion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ListCheck, ListPlus, Key } from 'lucide-react';
+import SplinkSettings from './SplinkSettings';
 
 export interface DedupeConfigProps {
   mappedColumns: { originalName: string; mappedName: string | null; include: boolean }[];
@@ -206,29 +206,33 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
         </div>
 
         {useSplink && (
-          <div className="space-y-2 p-3 border rounded-md bg-muted/40">
-            <div className="flex items-center space-x-2 mb-1">
-              <Key className="h-4 w-4 text-muted-foreground" />
-              <Label htmlFor="unique-id-column">Unique ID Column</Label>
+          <>
+            <SplinkSettings />
+            
+            <div className="space-y-2 p-3 border rounded-md bg-muted/40">
+              <div className="flex items-center space-x-2 mb-1">
+                <Key className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="unique-id-column">Unique ID Column</Label>
+              </div>
+              <Select 
+                value={uniqueIdColumn || "none"} 
+                onValueChange={setUniqueIdColumn}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a unique identifier column" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No unique ID (auto-generate)</SelectItem>
+                  {availableColumns.map(column => (
+                    <SelectItem key={column} value={column}>{column}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select a column that uniquely identifies each record. If none exists, Splink will generate IDs automatically.
+              </p>
             </div>
-            <Select 
-              value={uniqueIdColumn || "none"} 
-              onValueChange={setUniqueIdColumn}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a unique identifier column" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No unique ID (auto-generate)</SelectItem>
-                {availableColumns.map(column => (
-                  <SelectItem key={column} value={column}>{column}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Select a column that uniquely identifies each record. If none exists, Splink will generate IDs automatically.
-            </p>
-          </div>
+          </>
         )}
 
         <div className="border-t pt-4">

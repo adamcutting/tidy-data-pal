@@ -1,3 +1,4 @@
+
 import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig, SplinkSettings, DedupeProgress } from './types';
 import { pollDedupeStatus } from './sqlService';
 
@@ -22,6 +23,24 @@ export const getSplinkSettings = (): SplinkSettings => {
 // Save Splink settings to localStorage
 export const saveSplinkSettings = (settings: SplinkSettings): void => {
   localStorage.setItem('splink-settings', JSON.stringify(settings));
+};
+
+// Test Splink API connection
+export const testSplinkConnection = async (): Promise<boolean> => {
+  const splinkSettings = getSplinkSettings();
+  try {
+    // Attempt a simple HEAD request to check if the API is available
+    const response = await fetch(splinkSettings.apiUrl, {
+      method: 'HEAD',
+      headers: {
+        ...(splinkSettings.apiKey ? { 'X-API-Key': splinkSettings.apiKey } : {})
+      }
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn('Splink API connection test failed:', error);
+    return false;
+  }
 };
 
 // String normalization functions
@@ -204,9 +223,41 @@ export const deduplicateData = async (
         });
       }
       
-      result = await deduplicateWithSplink(data, mappedColumns, config, onProgress);
+      try {
+        // First check if Splink API is available
+        const isApiAvailable = await testSplinkConnection();
+        
+        if (!isApiAvailable) {
+          if (onProgress) {
+            onProgress({
+              status: 'processing',
+              percentage: 30,
+              statusMessage: 'Splink API is not available. Falling back to local deduplication...',
+              recordsProcessed: Math.floor(data.length * 0.3),
+              totalRecords: data.length
+            });
+          }
+          throw new Error('Splink API is not available');
+        }
+        
+        // If API is available, use Splink
+        result = await deduplicateWithSplink(data, mappedColumns, config, onProgress);
+      } catch (error) {
+        console.warn('Failed to use Splink, falling back to local implementation:', error);
+        if (onProgress) {
+          onProgress({
+            status: 'processing',
+            percentage: 30,
+            statusMessage: 'Splink processing failed. Falling back to local deduplication...',
+            recordsProcessed: Math.floor(data.length * 0.3),
+            totalRecords: data.length
+          });
+        }
+        // Fall back to local implementation if Splink fails
+        result = await deduplicateLocally(data, mappedColumns, config, onProgress);
+      }
     } else {
-      // Fall back to local implementation
+      // Use local implementation as requested
       result = await deduplicateLocally(data, mappedColumns, config, onProgress);
     }
     
@@ -283,7 +334,8 @@ export const deduplicateWithSplink = async (
     retainMatchingColumns: true,
     retainIntermediateCalculations: true,
     trainModel: true,
-    clusteringThreshold: config.threshold
+    clusteringThreshold: config.threshold,
+    uniqueIdColumn: config.splinkParams?.uniqueIdColumn === 'none' ? undefined : config.splinkParams?.uniqueIdColumn
   };
   
   // Prepare payload for Splink API
@@ -311,6 +363,7 @@ export const deduplicateWithSplink = async (
       });
     }
     
+    console.log('Calling Splink API at:', splinkSettings.apiUrl);
     const response = await fetch(splinkSettings.apiUrl, {
       method: 'POST',
       headers: {
