@@ -1,4 +1,3 @@
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -36,7 +35,8 @@ export interface DedupeConfig {
     retainIntermediateCalculations?: boolean;
     trainModel?: boolean;
     clusteringThreshold?: number;
-    uniqueIdColumn?: string; // Added this field for Splink's unique ID requirement
+    uniqueIdColumn?: string; // Used for Splink's unique ID requirement
+    pythonPath?: string;     // Path to Python executable (only needed for local Splink)
   };
   dataSource: 'file' | 'database';
   databaseConfig?: {

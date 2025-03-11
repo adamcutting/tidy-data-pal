@@ -324,33 +324,21 @@ export const deduplicateWithSplink = async (
     });
   }
   
-  // Convert comparison config to match_fields format expected by the API
-  const matchFields = config.comparisons.map(comp => {
-    let matchType = 'exact';
-    
-    // Map app's matchType to API matchType
-    if (comp.matchType === 'fuzzy') {
-      matchType = 'jaro_winkler'; // Using Jaro-Winkler for fuzzy matching
-    } else if (comp.matchType === 'partial') {
-      matchType = 'levenshtein';  // Using Levenshtein for partial matching
-    }
-    
-    return {
-      column: comp.column,
-      type: matchType,
-      threshold: comp.threshold || 0.8
-    };
-  });
+  // Get all columns that should be matched
+  const matchFields = config.comparisons.map(comp => comp.column);
   
-  // Extract blocking fields from the config
+  // Extract blocking fields from the config (simple blocking columns only)
   const blockingFields = config.blockingColumns.filter(col => !col.includes(':'));
   
-  // Prepare payload for Splink API in the expected format
+  // Determine unique ID column - use config setting or fall back to first column
+  const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || Object.keys(processedData[0])[0];
+  
+  // Prepare payload for simplified Splink API in the expected format
   const payload = {
-    input_data: processedData,
-    unique_id_column: config.splinkParams?.uniqueIdColumn || 'id',
+    unique_id_column: uniqueIdColumn,
     blocking_fields: blockingFields,
-    match_fields: matchFields
+    match_fields: matchFields,
+    input_data: processedData
   };
   
   console.log('Sending payload to Splink API:', payload);
@@ -382,38 +370,54 @@ export const deduplicateWithSplink = async (
       throw new Error(`Splink API error (${response.status}): ${errorText}`);
     }
     
+    // Parse the response from the API
     const result = await response.json();
     
-    // Update progress while processing continues on server
+    // Update progress
     if (onProgress) {
       onProgress({
         status: 'processing',
-        percentage: 70,
-        statusMessage: 'Splink is processing your data...',
-        recordsProcessed: Math.floor(data.length * 0.7),
+        percentage: 90,
+        statusMessage: 'Processing Splink results...',
+        recordsProcessed: Math.floor(data.length * 0.9),
         totalRecords: data.length
       });
     }
     
-    // Since we're storing the results in a file on the server,
-    // we need to handle this differently. For now, we'll create a dummy result
-    // that indicates success but doesn't have real data
-    // In a production environment, you'd likely want to fetch the CSV or
-    // have the API return the actual results
+    // Process the clusters from the API response
+    const clusters = result.clusters || [];
+    const clusterData = Array.isArray(result.cluster_data) ? result.cluster_data : [];
+    
+    // Create flagged data with cluster information
+    const flaggedData = processedData.map((row, index) => {
+      // Find the cluster this row belongs to (if any)
+      const clusterInfo = clusterData.find(c => c[uniqueIdColumn] === row[uniqueIdColumn]);
+      const isDuplicate = clusterInfo && clusterInfo.cluster_id !== null;
+      
+      return {
+        ...row,
+        __is_duplicate: isDuplicate ? 'Yes' : 'No',
+        __cluster_id: clusterInfo ? `cluster_${clusterInfo.cluster_id}` : 'unique',
+        __record_id: `record_${index}`
+      };
+    });
+    
+    // Determine stats
+    const uniqueRows = clusters.length;
+    const duplicateRows = data.length - uniqueRows;
     
     return {
       originalRows: data.length,
-      uniqueRows: data.length * 0.8, // Just an estimate
-      duplicateRows: data.length * 0.2, // Just an estimate
-      clusters: [],
-      processedData: [], // We don't have the actual processed data
-      flaggedData: processedData.map((row, index) => ({
-        ...row,
-        __is_duplicate: 'Unknown', // We don't know yet
-        __cluster_id: `unknown_${index}`,
-        __record_id: `record_${index}`
-      })),
-      resultId: result.output_file || 'unknown'
+      uniqueRows: uniqueRows,
+      duplicateRows: duplicateRows,
+      clusters: clusters,
+      processedData: processedData.filter(row => {
+        // Keep only first record from each cluster
+        const clusterInfo = clusterData.find(c => c[uniqueIdColumn] === row[uniqueIdColumn]);
+        return !clusterInfo || clusterInfo.is_cluster_representative;
+      }),
+      flaggedData: flaggedData,
+      resultId: result.output_file || 'splink_result'
     };
   } catch (error) {
     console.error('Error calling Splink API:', error);
