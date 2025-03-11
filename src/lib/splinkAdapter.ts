@@ -1,3 +1,4 @@
+
 import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress } from './types';
 
 /**
@@ -106,6 +107,9 @@ export const checkSplinkJobStatus = async (
         break;
       case 'failed':
         status = 'failed';
+        break;
+      case 'cancelled':
+        status = 'cancelled';
         break;
       case 'clustering':
         status = 'clustering';
@@ -226,6 +230,8 @@ function getStatusMessage(status: string, progress: number): string {
       return 'Processing complete';
     case 'failed':
       return 'Processing failed';
+    case 'cancelled':
+      return 'Processing cancelled by user';
     default:
       return `Processing... ${progress}% complete`;
   }

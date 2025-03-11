@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
 import SourceSelector from '@/components/SourceSelector';
@@ -36,13 +36,13 @@ const Index = () => {
     statusMessage: 'Waiting to start...'
   });
 
-  const handleFileLoaded = (data: FileData) => {
+  const handleFileLoaded = useCallback((data: FileData) => {
     setFileData(data);
     markStepCompleted('upload');
     goToNextStep('mapping');
-  };
+  }, []);
 
-  const handleSqlConnect = async (
+  const handleSqlConnect = useCallback(async (
     dbType: DatabaseType,
     config: MySQLConfig | MSSQLConfig,
     query: string,
@@ -78,15 +78,15 @@ const Index = () => {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, []);
 
-  const handleMappingComplete = (columns: MappedColumn[]) => {
+  const handleMappingComplete = useCallback((columns: MappedColumn[]) => {
     setMappedColumns(columns);
     markStepCompleted('mapping');
     goToNextStep('config');
-  };
+  }, []);
 
-  const handleConfigComplete = async (config: DedupeConfigType) => {
+  const handleConfigComplete = useCallback(async (config: DedupeConfigType) => {
     const fullConfig: DedupeConfigType = {
       ...config,
       dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
@@ -108,21 +108,58 @@ const Index = () => {
       toast.info('Starting deduplication process...');
       
       try {
-        const result = await deduplicateData(fileData.data, mappedColumns, fullConfig, 
-          (progress) => {
-            setProgress(progress);
+        setTimeout(async () => {
+          try {
+            const result = await deduplicateData(
+              fileData.data, 
+              mappedColumns, 
+              fullConfig, 
+              (progressUpdate) => {
+                setProgress(progressUpdate);
+              }
+            );
+            
+            setDedupeResult(result);
+            markStepCompleted('progress');
+            
+            if (result.jobId) {
+              if (result.processedData.length > 0) {
+                goToNextStep('results');
+                toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
+              } else {
+                pollDedupeStatus(result.jobId, (progressUpdate) => {
+                  setProgress(progressUpdate);
+                  
+                  if (progressUpdate.status === 'completed') {
+                    markStepCompleted('progress');
+                    goToNextStep('results');
+                    toast.success(`Deduplication complete! Check results tab for details.`);
+                  } else if (progressUpdate.status === 'failed') {
+                    toast.error(`Deduplication failed: ${progressUpdate.error || 'Unknown error'}`);
+                  } else if (progressUpdate.status === 'cancelled') {
+                    toast.info(`Deduplication job was cancelled.`);
+                  }
+                });
+              }
+            } else {
+              goToNextStep('results');
+              toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
+            }
+          } catch (error) {
+            console.error('Deduplication error inside timeout:', error);
+            
+            setProgress({
+              status: 'failed',
+              percentage: 0,
+              statusMessage: 'Deduplication process failed',
+              error: error instanceof Error ? error.message : 'Unknown error occurred'
+            });
+            
+            toast.error(`Error during deduplication process: ${error instanceof Error ? error.message : 'Please try again'}`);
+          } finally {
+            setIsProcessing(false);
           }
-        );
-        
-        setDedupeResult(result);
-        markStepCompleted('progress');
-        goToNextStep('results');
-        
-        toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
-        
-        if (result.jobId) {
-          pollDedupeStatus(result.jobId, setProgress);
-        }
+        }, 100);
       } catch (error) {
         console.error('Deduplication error:', error);
         
@@ -134,13 +171,12 @@ const Index = () => {
         });
         
         toast.error(`Error during deduplication process: ${error instanceof Error ? error.message : 'Please try again'}`);
-      } finally {
         setIsProcessing(false);
       }
     }
-  };
+  }, [fileData, mappedColumns]);
 
-  const handleRefreshStatus = () => {
+  const handleRefreshStatus = useCallback(() => {
     if (dedupeResult?.jobId) {
       setProgress(prev => ({
         ...prev,
@@ -149,9 +185,9 @@ const Index = () => {
       
       pollDedupeStatus(dedupeResult.jobId, setProgress);
     }
-  };
+  }, [dedupeResult]);
 
-  const handleCancelJob = async () => {
+  const handleCancelJob = useCallback(async () => {
     if (dedupeResult?.jobId) {
       try {
         const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/deduplicate';
@@ -180,15 +216,15 @@ const Index = () => {
         toast.error(`Failed to cancel job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
-  };
+  }, [dedupeResult]);
 
-  const markStepCompleted = (step: Step) => {
+  const markStepCompleted = useCallback((step: Step) => {
     setCompletedSteps(prev => new Set(prev).add(step));
-  };
+  }, []);
 
-  const goToNextStep = (step: Step) => {
+  const goToNextStep = useCallback((step: Step) => {
     setCurrentStep(step);
-  };
+  }, []);
 
   const renderStepContent = () => {
     switch (currentStep) {

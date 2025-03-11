@@ -305,7 +305,7 @@ export const deduplicateData = async (
   }
 };
 
-// Add the missing deduplicateWithSplink function
+// Updated deduplicateWithSplink function
 export const deduplicateWithSplink = async (
   data: any[],
   mappedColumns: MappedColumn[],
@@ -319,22 +319,42 @@ export const deduplicateWithSplink = async (
     throw new Error('Splink API URL is not configured');
   }
   
-  // Format data for the Splink API
-  const payload = formatDataForSplinkApi(data, mappedColumns, config);
-  
   // Update progress
   if (onProgress) {
     onProgress({
       status: 'processing',
-      percentage: 40,
-      statusMessage: 'Sending data to Splink API for processing...',
-      recordsProcessed: Math.floor(data.length * 0.4),
+      percentage: 30,
+      statusMessage: 'Preparing data for Splink API...',
+      recordsProcessed: Math.floor(data.length * 0.3),
       totalRecords: data.length
     });
   }
   
-  // Make the API request
+  // Format data in smaller chunks to prevent UI freezing
+  let payload;
+  
+  // Use setTimeout to yield to the main thread
+  await new Promise(resolve => setTimeout(resolve, 0));
+  
   try {
+    // Format data for the Splink API
+    payload = formatDataForSplinkApi(data, mappedColumns, config);
+    
+    // Update progress
+    if (onProgress) {
+      onProgress({
+        status: 'processing',
+        percentage: 40,
+        statusMessage: 'Sending data to Splink API for processing...',
+        recordsProcessed: Math.floor(data.length * 0.4),
+        totalRecords: data.length
+      });
+    }
+    
+    // Yield to the main thread again before making the API request
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    // Make the API request
     console.log('Sending data to Splink API:', splinkSettings.apiUrl);
     
     const response = await fetch(splinkSettings.apiUrl, {
@@ -357,9 +377,9 @@ export const deduplicateWithSplink = async (
     if (onProgress) {
       onProgress({
         status: 'processing',
-        percentage: 80,
-        statusMessage: 'Processing Splink API response...',
-        recordsProcessed: Math.floor(data.length * 0.8),
+        percentage: 60,
+        statusMessage: 'Job submitted successfully. Waiting for processing...',
+        recordsProcessed: Math.floor(data.length * 0.6),
         totalRecords: data.length
       });
     }
