@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -38,12 +37,10 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
   const [lastPercentage, setLastPercentage] = useState<number>(progress.percentage || 0);
   const [frozenTime, setFrozenTime] = useState<number>(0);
   
-  // Track when progress updates come in
   useEffect(() => {
     const now = Date.now();
     setLastProgressUpdate(now);
     
-    // Reset stalled status if we get a real progress update with a different percentage
     if (progress.percentage !== lastPercentage) {
       setLastPercentage(progress.percentage);
       setStalled(false);
@@ -55,14 +52,11 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
     let timer: number | null = null;
     let stalledCheckTimer: number | null = null;
 
-    // Only start the timer if process is running
     if (progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'cancelled') {
-      // Timer for elapsed time
       timer = window.setInterval(() => {
         setTimeElapsed(prev => {
           const newTime = prev + 1;
           
-          // After 2 minutes, consider it a long-running job
           if (newTime > 120 && !isLongRunning) {
             setIsLongRunning(true);
             toast.info("This is taking longer than expected. Large datasets may require several minutes to process.");
@@ -72,19 +66,15 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
         });
       }, 1000);
       
-      // Timer to check if progress has stalled
       stalledCheckTimer = window.setInterval(() => {
         const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
         
-        // If percentage hasn't changed in a while, increment frozen time counter
         if (progress.percentage === lastPercentage) {
           setFrozenTime(prev => prev + 1);
         } else {
-          // Reset if we got new percentage
           setFrozenTime(0);
         }
         
-        // If no update in 10 seconds and not already marked as stalled
         if (timeSinceLastUpdate > 10000 && !stalled) {
           setStalled(true);
           console.warn(`Process appears to be stalled. No updates for ${Math.floor(timeSinceLastUpdate/1000)} seconds.`);
@@ -109,7 +99,6 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
     };
   }, [progress.status, isLongRunning, lastProgressUpdate, lastPercentage, stalled, frozenTime, onCancel]);
 
-  // Format time elapsed
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -159,20 +148,17 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       setIsCancelling(true);
       toast.info("Requesting job cancellation...");
       onCancel();
-      // Don't reset isCancelling here - let the status update handle that
     }
   };
 
   const toggleDebugInfo = () => {
     setShowDebugInfo(!showDebugInfo);
     
-    // If showing debug info, log current progress state to console
     if (!showDebugInfo) {
       console.log('Current progress state:', progress);
     }
   };
 
-  // Reset cancelling state if status changes to cancelled or failed
   useEffect(() => {
     if (progress.status === 'cancelled' || progress.status === 'failed') {
       setIsCancelling(false);
@@ -185,7 +171,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
     <Card className="w-full">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
-          {isProcessing && <Spinner />}
+          {isProcessing && <Spinner size="md" className={stalled ? "text-red-500" : "text-primary"} />}
           <span>Deduplication Progress</span>
           <span className={`text-sm font-normal ${getStatusColor()}`}>
             {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
@@ -229,7 +215,6 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             </div>
           )}
           
-          {/* Records processed indicator */}
           {progress.recordsProcessed !== undefined && progress.totalRecords !== undefined && (
             <div className="bg-muted p-2 rounded">
               <p className="flex justify-between">
@@ -243,7 +228,6 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             </div>
           )}
           
-          {/* Chunk processing indicator */}
           {progress.currentChunk !== undefined && progress.totalChunks !== undefined && (
             <div className="bg-muted p-2 rounded mt-2">
               <p className="flex justify-between">
@@ -257,7 +241,22 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             </div>
           )}
           
-          {/* Stall indicator */}
+          {isProcessing && (
+            <div className={`p-3 rounded mt-2 border ${stalled ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Spinner size="sm" className={stalled ? "text-red-500" : "text-yellow-500"} />
+                <span className={stalled ? "text-red-700 dark:text-red-400 font-medium" : "text-yellow-700 dark:text-yellow-400 font-medium"}>
+                  {stalled ? "UI Thread Blocked" : "Processing in Background"}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {stalled 
+                  ? "The application appears to be frozen. Processing large datasets may cause temporary unresponsiveness." 
+                  : "The application is processing your data. You can continue to use other parts of the application during this time."}
+              </p>
+            </div>
+          )}
+          
           {stalled && (
             <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800 mt-2">
               <p className="flex justify-between text-red-700 dark:text-red-400">
@@ -265,12 +264,11 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
                 <span className="font-mono">{formatTime(frozenTime)}</span>
               </p>
               <p className="text-xs text-red-600 dark:text-red-500 mt-1">
-                The browser main thread may be blocked by intensive processing. Consider enabling Web Worker in configuration.
+                The browser main thread may be blocked by intensive processing.
               </p>
             </div>
           )}
           
-          {/* Show debug information if enabled */}
           {showDebugInfo && (
             <div className="mt-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-md">
               <p className="text-xs font-bold mb-1">Debug Information:</p>

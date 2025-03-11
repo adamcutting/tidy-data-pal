@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
@@ -18,7 +19,6 @@ import {
   MySQLConfig,
   MSSQLConfig
 } from '@/lib/types';
-import { deduplicateData } from '@/lib/dedupeService';
 import { loadDatabaseData, pollDedupeStatus } from '@/lib/sqlService';
 import { cancelSplinkJob } from '@/lib/splinkAdapter';
 
@@ -90,6 +90,7 @@ const Index = () => {
     const fullConfig: DedupeConfigType = {
       ...config,
       dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
+      useSplink: true, // Always use Splink
     };
     
     setDedupeConfig(fullConfig);
@@ -107,82 +108,92 @@ const Index = () => {
       
       toast.info('Starting deduplication process...');
       
-      try {
-        setTimeout(async () => {
-          try {
-            const dataSize = fileData.data.length;
-            
-            if (dataSize > 10000) {
-              toast.info(`Processing a large dataset (${dataSize.toLocaleString()} records). This may take some time.`);
-            }
-            
-            const result = await deduplicateData(
-              fileData.data, 
-              mappedColumns, 
-              fullConfig, 
-              (progressUpdate) => {
-                setProgress(progressUpdate);
-                
-                if (progressUpdate.status === 'processing' && progressUpdate.percentage > 0 && progressUpdate.percentage % 10 === 0) {
-                  console.log(`Progress update: ${progressUpdate.percentage}% - ${progressUpdate.statusMessage}`);
-                }
-              }
-            );
-            
-            setDedupeResult(result);
-            markStepCompleted('progress');
-            
-            if (result.jobId) {
-              if (result.processedData.length > 0) {
-                goToNextStep('results');
-                toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
-              } else {
-                pollDedupeStatus(result.jobId, (progressUpdate) => {
-                  setProgress(progressUpdate);
-                  
-                  if (progressUpdate.status === 'completed') {
-                    markStepCompleted('progress');
-                    goToNextStep('results');
-                    toast.success(`Deduplication complete! Check results tab for details.`);
-                  } else if (progressUpdate.status === 'failed') {
-                    toast.error(`Deduplication failed: ${progressUpdate.error || 'Unknown error'}`);
-                  } else if (progressUpdate.status === 'cancelled') {
-                    toast.info(`Deduplication job was cancelled.`);
-                  }
-                });
-              }
-            } else {
-              goToNextStep('results');
-              toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
-            }
-          } catch (error) {
-            console.error('Deduplication error inside timeout:', error);
-            
-            setProgress({
-              status: 'failed',
-              percentage: 0,
-              statusMessage: 'Deduplication process failed',
-              error: error instanceof Error ? error.message : 'Unknown error occurred'
-            });
-            
-            toast.error(`Error during deduplication process: ${error instanceof Error ? error.message : 'Please try again'}`);
-          } finally {
-            setIsProcessing(false);
-          }
-        }, 100);
-      } catch (error) {
-        console.error('Deduplication error:', error);
+      // Generate a job ID
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Create a new Worker
+      const worker = new Worker(new URL('@/lib/dataProcessingWorker.ts', import.meta.url), { type: 'module' });
+      
+      // Listen for messages from the worker
+      worker.onmessage = (event) => {
+        const { type, data } = event.data;
         
+        if (type === 'progress') {
+          setProgress(data);
+        } else if (type === 'result') {
+          setDedupeResult(data);
+          markStepCompleted('progress');
+          goToNextStep('results');
+          worker.terminate(); // Clean up the worker
+          setIsProcessing(false);
+          toast.success(`Deduplication complete! Found ${data.duplicateRows} duplicate records.`);
+        } else if (type === 'error') {
+          console.error('Worker error:', data);
+          setProgress({
+            status: 'failed',
+            percentage: 0,
+            statusMessage: 'Deduplication process failed',
+            error: data
+          });
+          worker.terminate(); // Clean up the worker
+          setIsProcessing(false);
+          toast.error(`Error during deduplication process: ${data}`);
+        } else if (type === 'splink-job') {
+          // Poll status for Splink job
+          if (data.jobId) {
+            const tempResult = {
+              ...data,
+              jobId: data.jobId
+            };
+            setDedupeResult(tempResult);
+            
+            pollDedupeStatus(data.jobId, (progressUpdate) => {
+              setProgress(progressUpdate);
+              
+              if (progressUpdate.status === 'completed') {
+                markStepCompleted('progress');
+                goToNextStep('results');
+                worker.terminate(); // Clean up the worker
+                setIsProcessing(false);
+                toast.success(`Deduplication complete! Check results tab for details.`);
+              } else if (progressUpdate.status === 'failed') {
+                worker.terminate(); // Clean up the worker
+                setIsProcessing(false);
+                toast.error(`Deduplication failed: ${progressUpdate.error || 'Unknown error'}`);
+              } else if (progressUpdate.status === 'cancelled') {
+                worker.terminate(); // Clean up the worker
+                setIsProcessing(false);
+                toast.info(`Deduplication job was cancelled.`);
+              }
+            });
+          }
+        }
+      };
+      
+      // Handle worker errors
+      worker.onerror = (error) => {
+        console.error('Worker error:', error);
         setProgress({
           status: 'failed',
           percentage: 0,
           statusMessage: 'Deduplication process failed',
-          error: error instanceof Error ? error.message : 'Unknown error occurred'
+          error: error.message
         });
-        
-        toast.error(`Error during deduplication process: ${error instanceof Error ? error.message : 'Please try again'}`);
+        worker.terminate(); // Clean up the worker
         setIsProcessing(false);
-      }
+        toast.error(`Error during deduplication process: ${error.message}`);
+      };
+      
+      // Start the deduplication process in the worker
+      worker.postMessage({
+        type: 'deduplicate',
+        data: {
+          fileData: fileData.data,
+          mappedColumns,
+          config: fullConfig,
+          jobId
+        }
+      });
     }
   }, [fileData, mappedColumns]);
 
