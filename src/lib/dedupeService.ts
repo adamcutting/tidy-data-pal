@@ -1,4 +1,5 @@
 import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig, SplinkSettings, DedupeProgress } from './types';
+import { formatDataForSplinkApi, processSplinkResponse, checkSplinkJobStatus } from './splinkAdapter';
 
 // Default Splink settings
 const DEFAULT_SPLINK_SETTINGS: SplinkSettings = {
@@ -304,7 +305,74 @@ export const deduplicateData = async (
   }
 };
 
-// Export our local implementation of pollDedupeStatus
+// Add the missing deduplicateWithSplink function
+export const deduplicateWithSplink = async (
+  data: any[],
+  mappedColumns: MappedColumn[],
+  config: DedupeConfig,
+  onProgress?: (progress: DedupeProgress) => void
+): Promise<DedupeResult> => {
+  // Get Splink settings from localStorage or use defaults
+  const splinkSettings = getSplinkSettings();
+  
+  if (!splinkSettings.apiUrl) {
+    throw new Error('Splink API URL is not configured');
+  }
+  
+  // Format data for the Splink API
+  const payload = formatDataForSplinkApi(data, mappedColumns, config);
+  
+  // Update progress
+  if (onProgress) {
+    onProgress({
+      status: 'processing',
+      percentage: 40,
+      statusMessage: 'Sending data to Splink API for processing...',
+      recordsProcessed: Math.floor(data.length * 0.4),
+      totalRecords: data.length
+    });
+  }
+  
+  // Make the API request
+  try {
+    console.log('Sending data to Splink API:', splinkSettings.apiUrl);
+    
+    const response = await fetch(splinkSettings.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(splinkSettings.apiKey ? { 'Authorization': `Bearer ${splinkSettings.apiKey}` } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Splink API error: ${errorText}`);
+    }
+    
+    const apiResponse = await response.json();
+    
+    // Update progress
+    if (onProgress) {
+      onProgress({
+        status: 'processing',
+        percentage: 80,
+        statusMessage: 'Processing Splink API response...',
+        recordsProcessed: Math.floor(data.length * 0.8),
+        totalRecords: data.length
+      });
+    }
+    
+    // Process the API response
+    return processSplinkResponse(apiResponse, data);
+  } catch (error) {
+    console.error('Error using Splink API:', error);
+    throw error;
+  }
+};
+
+// Our local implementation of pollDedupeStatus
 export const pollDedupeStatus = async (
   jobId: string, 
   onProgress: (progress: DedupeProgress) => void,
@@ -334,8 +402,6 @@ export const pollDedupeStatus = async (
       }
       
       attempts++;
-      
-      const { checkSplinkJobStatus } = await import('./splinkAdapter');
       
       const progress = await checkSplinkJobStatus(jobId, apiBaseUrl, splinkSettings.apiKey);
       
