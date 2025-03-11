@@ -305,7 +305,72 @@ export const deduplicateData = async (
   }
 };
 
-// Update the deduplicateWithSplink function to use our new adapter
+// Update the polling function to use the new status check endpoint
+export const pollDedupeStatus = async (
+  jobId: string, 
+  onProgress: (progress: DedupeProgress) => void,
+  maxAttempts = 100,  // Increased max attempts for large jobs
+  interval = 3000     // Poll every 3 seconds
+): Promise<void> => {
+  if (!jobId) {
+    console.warn('No job ID provided for status polling');
+    return;
+  }
+
+  let attempts = 0;
+  
+  // Get the Splink API URL from settings
+  const splinkSettings = getSplinkSettings();
+  const apiBaseUrl = splinkSettings.apiUrl || 'http://localhost:5000/api/deduplicate';
+  
+  const checkStatus = async () => {
+    try {
+      if (attempts >= maxAttempts) {
+        console.warn('Max polling attempts reached');
+        onProgress({
+          status: 'processing',
+          percentage: 95,
+          statusMessage: 'Processing is taking longer than expected. Please check results page later.',
+        });
+        return;
+      }
+      
+      attempts++;
+      
+      // Import the status checking function from splinkAdapter
+      const { checkSplinkJobStatus } = await import('./splinkAdapter');
+      
+      // Get the current status
+      const progress = await checkSplinkJobStatus(jobId, apiBaseUrl, splinkSettings.apiKey);
+      
+      // Update the progress
+      onProgress(progress);
+      
+      // Continue polling if not complete
+      if (progress.status !== 'completed' && progress.status !== 'failed') {
+        setTimeout(checkStatus, interval);
+      }
+    } catch (error) {
+      console.error('Error checking deduplication status:', error);
+      
+      // Continue polling even if there's an error
+      if (attempts < maxAttempts) {
+        setTimeout(checkStatus, interval);
+      } else {
+        onProgress({
+          status: 'processing',
+          percentage: 95,
+          statusMessage: 'Unable to fetch status updates. Process may still be running.',
+        });
+      }
+    }
+  };
+  
+  // Start polling
+  checkStatus();
+};
+
+// Update the deduplicateWithSplink function to use the improved job tracking
 export const deduplicateWithSplink = async (
   data: any[],
   mappedColumns: MappedColumn[],
@@ -328,12 +393,17 @@ export const deduplicateWithSplink = async (
     // Format the data for the Splink API
     const formattedData = formatDataForSplinkApi(data, mappedColumns, config);
     
+    // Store the job ID for polling
+    const jobId = formattedData.job_id;
+    
     // Update progress
     if (progressCallback) {
       progressCallback({
         status: 'processing',
         percentage: 30,
-        statusMessage: 'Sending data to Splink API...'
+        statusMessage: 'Sending data to Splink API...',
+        recordsProcessed: 0,
+        totalRecords: data.length
       });
     }
 
@@ -356,7 +426,9 @@ export const deduplicateWithSplink = async (
       progressCallback({
         status: 'processing',
         percentage: 70,
-        statusMessage: 'Processing results from Splink API...'
+        statusMessage: 'Processing results from Splink API...',
+        recordsProcessed: Math.floor(data.length * 0.7),
+        totalRecords: data.length
       });
     }
 
@@ -366,6 +438,11 @@ export const deduplicateWithSplink = async (
     }
 
     const apiResponse = await response.json();
+    
+    // Start the status polling if we have a job ID
+    if (jobId && progressCallback) {
+      pollDedupeStatus(jobId, progressCallback);
+    }
     
     // Update progress
     if (progressCallback) {
@@ -377,7 +454,12 @@ export const deduplicateWithSplink = async (
     }
 
     // Process the response
-    return processSplinkResponse(apiResponse, data);
+    const result = processSplinkResponse(apiResponse, data);
+    
+    // Ensure the jobId is included in the result
+    result.jobId = jobId || result.jobId;
+    
+    return result;
   } catch (error) {
     console.error('Error in deduplicateWithSplink:', error);
     
@@ -659,4 +741,3 @@ export const downloadCSV = (csvData: string, fileName: string): void => {
   link.click();
   document.body.removeChild(link);
 };
-

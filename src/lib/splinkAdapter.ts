@@ -1,5 +1,4 @@
-
-import { DedupeConfig, DedupeResult, MappedColumn } from './types';
+import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress } from './types';
 
 /**
  * Prepares and formats data for the Splink API according to its expected structure
@@ -14,6 +13,7 @@ export const formatDataForSplinkApi = (
   match_fields: { field: string; type: string }[];
   input_data: any[];
   output_dir?: string;
+  job_id?: string; // Add job_id for tracking
 } => {
   // Get columns that are included in the deduplication
   const includedColumns = mappedColumns
@@ -53,12 +53,16 @@ export const formatDataForSplinkApi = (
     return row;
   });
 
+  // Generate a unique job ID for tracking
+  const jobId = `job_${new Date().getTime()}_${Math.random().toString(36).substring(2, 10)}`;
+
   // Create the payload
   const payload = {
     unique_id_column: uniqueIdColumn,
     blocking_fields: blockingFields,
     match_fields: matchFields,
-    input_data: dataWithIds
+    input_data: dataWithIds,
+    job_id: jobId // Add the job ID to the payload
   };
 
   // Add output directory if specified in settings
@@ -67,6 +71,55 @@ export const formatDataForSplinkApi = (
   }
 
   return payload;
+};
+
+/**
+ * Check the status of a Splink job from the backend
+ */
+export const checkSplinkJobStatus = async (
+  jobId: string,
+  apiBaseUrl: string,
+  apiKey?: string
+): Promise<DedupeProgress> => {
+  try {
+    // Build the status check URL
+    const statusUrl = `${apiBaseUrl.replace(/\/deduplicate$/, '')}/job-status/${jobId}`;
+    
+    const response = await fetch(statusUrl, {
+      method: 'GET',
+      headers: {
+        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to get job status: ${errorText}`);
+    }
+
+    const statusData = await response.json();
+    
+    // Convert the backend status to our DedupeProgress format
+    return {
+      status: statusData.status === 'completed' ? 'completed' 
+        : statusData.status === 'failed' ? 'failed' 
+        : statusData.status === 'clustering' ? 'clustering'
+        : 'processing',
+      percentage: statusData.progress_percentage || 0,
+      statusMessage: statusData.message || 'Processing...',
+      recordsProcessed: statusData.records_processed,
+      totalRecords: statusData.total_records,
+      estimatedTimeRemaining: statusData.estimated_time_remaining,
+      error: statusData.error
+    };
+  } catch (error) {
+    console.error('Error checking job status:', error);
+    return {
+      status: 'processing',
+      percentage: 50, // Default to 50% when status check fails
+      statusMessage: 'Processing in progress. Status update unavailable.',
+    };
+  }
 };
 
 /**
@@ -113,8 +166,6 @@ export const processSplinkResponse = (
       let clusterId = null;
       
       // Try to find this record in the cluster data
-      // Note: This is a simplistic approach and might need to be refined
-      // based on your exact data structure and matching logic
       for (const [id, cluster] of clusterMap.entries()) {
         if (cluster.length > 1 && 
             cluster.some((clusterRow: any) => {
@@ -148,7 +199,7 @@ export const processSplinkResponse = (
       processedData,
       flaggedData,
       resultId: new Date().getTime().toString(),
-      jobId: apiResponse.output_path || new Date().getTime().toString()
+      jobId: apiResponse.job_id || apiResponse.output_path || new Date().getTime().toString()
     };
   }
   

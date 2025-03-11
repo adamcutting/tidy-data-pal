@@ -145,6 +145,19 @@ const Index = () => {
       }
     }
   };
+  
+  // Handle manual refresh of the progress status
+  const handleRefreshStatus = () => {
+    if (dedupeResult?.jobId) {
+      setProgress(prev => ({
+        ...prev,
+        statusMessage: `Refreshing status for job ${dedupeResult.jobId}...`
+      }));
+      
+      // Re-poll the job status
+      pollDedupeStatus(dedupeResult.jobId, setProgress);
+    }
+  };
 
   const markStepCompleted = (step: Step) => {
     setCompletedSteps(prev => new Set(prev).add(step));
@@ -190,7 +203,11 @@ const Index = () => {
       case 'progress':
         return (
           <div className="w-full max-w-2xl mx-auto">
-            <ProgressIndicator progress={progress} />
+            <ProgressIndicator 
+              progress={progress} 
+              jobId={dedupeResult?.jobId}
+              onRefresh={handleRefreshStatus}
+            />
           </div>
         );
         
