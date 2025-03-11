@@ -1,4 +1,3 @@
-
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 import { toast } from 'sonner';
 import * as mssql from 'mssql';
@@ -8,9 +7,6 @@ const POLLING_INTERVAL = 1500;
 
 /**
  * Function to get database metadata (tables and views) from a SQL database
- * 
- * This function creates a backend API call to fetch tables and views
- * in a real implementation, this would be a server endpoint
  */
 export const getDatabaseMetadata = async (
   dbType: DatabaseType,
@@ -55,17 +51,8 @@ export const getDatabaseMetadata = async (
       throw new Error(`Failed to fetch database metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   } else {
-    // MySQL is not implemented yet - fall back to mock implementation for now
-    console.warn('MySQL implementation is not available yet - using mock data');
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Return mock data based on the database name to simulate real tables
-    return {
-      tables: ['customers', 'orders', 'products', 'employees', 'inventory'],
-      views: ['customer_orders', 'product_inventory']
-    };
+    // MySQL implementation
+    throw new Error('MySQL connection is not implemented in this version');
   }
 };
 
@@ -188,56 +175,9 @@ export const loadDatabaseData = async (
       throw new Error(`Failed to load data from SQL Server: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   } else {
-    // MySQL implementation is not available yet - return mock data
-    console.warn('MySQL implementation is not available yet - using mock data');
-    
-    // Simulate loading time
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const mockData = generateMockData(query, 20);
-    
-    onProgressUpdate({
-      status: 'completed',
-      percentage: 100,
-      statusMessage: `Successfully loaded ${mockData.length} records from database (mock).`,
-      recordsProcessed: mockData.length,
-      totalRecords: mockData.length
-    });
-    
-    return mockData;
+    // MySQL implementation
+    throw new Error('MySQL connection is not implemented in this version');
   }
-};
-
-// Helper function to generate mock data (for MySQL fallback only)
-const generateMockData = (tableName: string, count: number): any[] => {
-  const data = [];
-  
-  // Create field names based on the table name
-  const fields = ['ID', 'Name', 'Description', 'CreatedDate', 'ModifiedDate', 'IsActive'];
-  
-  for (let i = 0; i < count; i++) {
-    const item: Record<string, any> = {};
-    
-    // Add values for each field
-    fields.forEach(field => {
-      if (field === 'ID') {
-        item[field] = `${tableName.charAt(0)}${1000 + i}`;
-      } else if (field === 'Name') {
-        item[field] = `${tableName} ${i}`;
-      } else if (field === 'Description') {
-        item[field] = `This is a sample ${tableName.toLowerCase()} record.`;
-      } else if (field === 'CreatedDate' || field === 'ModifiedDate') {
-        const date = new Date(Date.now() - Math.random() * 31536000000);
-        item[field] = date.toISOString().split('T')[0];
-      } else if (field === 'IsActive') {
-        item[field] = Math.random() > 0.1; // 90% chance of being active
-      }
-    });
-    
-    data.push(item);
-  }
-  
-  return data;
 };
 
 // Polling function to check dedupe status

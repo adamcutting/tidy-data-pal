@@ -77,6 +77,14 @@ const Index = () => {
     } catch (error) {
       console.error('Database connection error:', error);
       toast.error(`Failed to connect to database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Reset processing state so user can try again
+      setProgress({
+        status: 'failed',
+        percentage: 0,
+        statusMessage: 'Database connection failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     } finally {
       setIsProcessing(false);
     }
