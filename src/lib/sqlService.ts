@@ -1,35 +1,41 @@
 
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 import { toast } from 'sonner';
-import * as mssql from 'mssql';
-import * as mysql from 'mysql2/promise';
 
 // Function to create a connection pool for SQL Server
 const createMSSQLPool = async (config: MSSQLConfig) => {
   const { server, port, user, password, database, options } = config;
   
-  const poolConfig = {
-    server,
-    port,
-    user,
-    password,
-    database,
-    options: {
-      encrypt: options?.encrypt ?? true,
-      trustServerCertificate: options?.trustServerCertificate ?? false,
-      ...options
-    },
-    pool: {
-      max: 10,
-      min: 0,
-      idleTimeoutMillis: 30000
-    }
-  };
+  try {
+    // Dynamically import mssql to avoid issues with SSR/browser environments
+    const mssql = await import('mssql');
+    
+    const poolConfig = {
+      server,
+      port,
+      user,
+      password,
+      database,
+      options: {
+        encrypt: options?.encrypt ?? true,
+        trustServerCertificate: options?.trustServerCertificate ?? false,
+        ...options
+      },
+      pool: {
+        max: 10,
+        min: 0,
+        idleTimeoutMillis: 30000
+      }
+    };
 
-  console.log('Creating MSSQL connection pool with config:', 
-    { ...poolConfig, password: password ? '***HIDDEN***' : undefined });
-  
-  return await new mssql.ConnectionPool(poolConfig).connect();
+    console.log('Creating MSSQL connection pool with config:', 
+      { ...poolConfig, password: password ? '***HIDDEN***' : undefined });
+    
+    return await new mssql.ConnectionPool(poolConfig).connect();
+  } catch (error) {
+    console.error('Error creating MSSQL connection pool:', error);
+    throw new Error(`Failed to create MSSQL connection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 };
 
 // Function to get database metadata (tables and views)
@@ -42,6 +48,9 @@ export const getDatabaseMetadata = async (
 
   if (dbType === 'mssql') {
     try {
+      // Dynamically import mssql
+      const mssql = await import('mssql');
+      
       // Create a connection to SQL Server
       const pool = await createMSSQLPool(config as MSSQLConfig);
       
@@ -80,6 +89,9 @@ export const getDatabaseMetadata = async (
     }
   } else if (dbType === 'mysql') {
     try {
+      // Dynamically import mysql2
+      const mysql = await import('mysql2/promise');
+      
       const { host, port, user, password, database } = config as MySQLConfig;
       
       console.log("Connecting to MySQL...");
@@ -154,6 +166,9 @@ export const loadDatabaseData = async (
     let data: any[] = [];
     
     if (dbType === 'mssql') {
+      // Dynamically import mssql
+      const mssql = await import('mssql');
+      
       // MSSQL Implementation
       const pool = await createMSSQLPool(config as MSSQLConfig);
       
@@ -176,6 +191,9 @@ export const loadDatabaseData = async (
       await pool.close();
     } 
     else if (dbType === 'mysql') {
+      // Dynamically import mysql2
+      const mysql = await import('mysql2/promise');
+      
       // MySQL Implementation
       const { host, port, user, password, database } = config as MySQLConfig;
       
