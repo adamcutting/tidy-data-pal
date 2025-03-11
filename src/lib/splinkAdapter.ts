@@ -2,7 +2,7 @@ import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress } from './type
 
 /**
  * Prepares and formats data for the Splink API according to its expected structure
- * Uses chunking to prevent UI freezing with large datasets
+ * Uses improved chunking to prevent UI freezing and manage large datasets
  */
 export const formatDataForSplinkApi = async (
   data: any[],
@@ -14,6 +14,8 @@ export const formatDataForSplinkApi = async (
   blocking_fields: string[];
   match_fields: { field: string; type: string }[];
   input_data: any[];
+  chunk_size?: number;
+  total_rows?: number;
   output_dir?: string;
 }> => {
   // Get columns that are included in the deduplication
@@ -45,9 +47,15 @@ export const formatDataForSplinkApi = async (
     };
   });
 
-  // Process data in chunks to prevent UI freezing
-  const chunkSize = 1000; // Process 1000 records at a time
-  const totalChunks = Math.ceil(data.length / chunkSize);
+  // For extremely large datasets, we'll use a different approach
+  // We'll send the first chunk to start processing and include metadata
+  // about total size to let the backend handle the rest
+  const isVeryLargeDataset = data.length > 100000;
+  const chunkSize = isVeryLargeDataset ? 50000 : 5000; // Smaller chunks for better UI responsiveness
+  
+  // For very large datasets, we'll only process the first chunk on the client
+  const rowsToProcess = isVeryLargeDataset ? Math.min(chunkSize, data.length) : data.length;
+  const totalChunks = Math.ceil(rowsToProcess / chunkSize);
   const processedData: any[] = [];
   
   for (let i = 0; i < totalChunks; i++) {
@@ -93,7 +101,9 @@ export const formatDataForSplinkApi = async (
     blocking_fields: blockingFields,
     match_fields: matchFields,
     input_data: processedData,
-    job_id: jobId // Add the job ID to the payload
+    job_id: jobId, // Add the job ID to the payload
+    chunk_size: chunkSize, // Add chunk size for backend reference
+    total_rows: data.length // Add total rows for backend chunking
   };
 
   // Add output directory if specified in settings

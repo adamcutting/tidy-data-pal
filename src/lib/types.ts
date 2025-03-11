@@ -4,6 +4,7 @@ export interface FileData {
   data: any[];
   rawData: string | ArrayBuffer | null;
   columns: string[];
+  totalRows?: number; // Added for large dataset support
 }
 
 export interface MappedColumn {
@@ -37,6 +38,8 @@ export interface DedupeConfig {
     clusteringThreshold?: number;
     uniqueIdColumn?: string; // Used for Splink's unique ID requirement
     pythonPath?: string;     // Path to Python executable (only needed for local Splink)
+    enableLargeDatasetMode?: boolean; // Added for large dataset support
+    maxChunkSize?: number;   // Added for large dataset support
   };
   splinkSettings?: SplinkSettings; // Added to support outputDir and other Splink settings
   dataSource: 'file' | 'database';
@@ -46,6 +49,7 @@ export interface DedupeConfig {
     query: string;
     isTable: boolean;
   };
+  enableStreamProcessing?: boolean; // Added for large dataset support
 }
 
 export interface SavedConfig {
@@ -76,6 +80,7 @@ export interface SplinkSettings {
   pythonPath?: string;
   scriptPath?: string;
   outputDir?: string;  // Added for specifying output directory
+  largeDatasetThreshold?: number; // Added for large dataset support
 }
 
 export interface MySQLConfig {
@@ -136,6 +141,9 @@ export interface DedupeJob {
     duplicateRows: number;
   };
   resultLocation?: string;
+  chunked?: boolean; // Added for large dataset support
+  processedChunks?: number; // Added for large dataset support
+  totalChunks?: number; // Added for large dataset support
 }
 
 export type DedupeProgress = {
@@ -146,4 +154,7 @@ export type DedupeProgress = {
   recordsProcessed?: number;
   totalRecords?: number;
   error?: string;
+  chunked?: boolean; // Added for large dataset support
+  currentChunk?: number; // Added for large dataset support
+  totalChunks?: number; // Added for large dataset support
 };
