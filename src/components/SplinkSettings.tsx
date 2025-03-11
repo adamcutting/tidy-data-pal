@@ -153,7 +153,7 @@ const SplinkSettings: React.FC<SplinkSettingsProps> = ({ onSettingsChange }) => 
               onClick={handleTestConnection}
               disabled={isTesting}
             >
-              {isTesting ? <Spinner className="mr-2" /> : null}
+              {isTesting ? <Spinner /> : null}
               Test Connection
             </Button>
           </div>
