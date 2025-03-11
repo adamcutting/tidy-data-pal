@@ -1,17 +1,35 @@
-<<<<<<< HEAD
-=======
 
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 import { toast } from 'sonner';
 import * as mssql from 'mssql';
->>>>>>> 75491e2cd26e92928f294bd611bb775b6755452f
 
-import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
+// Function to create a connection pool for SQL Server
+const createMSSQLPool = async (config: MSSQLConfig) => {
+  const { server, port, user, password, database, options } = config;
+  
+  const poolConfig = {
+    server,
+    port,
+    user,
+    password,
+    database,
+    options: {
+      encrypt: options?.encrypt ?? true,
+      trustServerCertificate: options?.trustServerCertificate ?? false,
+      ...options
+    }
+  };
+
+  console.log('Creating MSSQL connection pool with config:', 
+    { ...poolConfig, password: '***HIDDEN***' });
+  
+  return await new mssql.ConnectionPool(poolConfig).connect();
+};
 
 // Mock polling interval in ms (in a real implementation this would call an actual backend API)
 const POLLING_INTERVAL = 1500;
 
-// Mock function to get database metadata (tables and views)
+// Function to get database metadata (tables and views)
 export const getDatabaseMetadata = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig
@@ -63,7 +81,7 @@ export const getDatabaseMetadata = async (
   }
 };
 
-// Mock function to load data from a database
+// Function to load data from a database
 export const loadDatabaseData = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig,
@@ -71,16 +89,10 @@ export const loadDatabaseData = async (
   isTable: boolean,
   onProgressUpdate: (progress: DedupeProgress) => void
 ): Promise<any[]> => {
-<<<<<<< HEAD
-  // In a real implementation, this would make an API call to a backend service
-  // For now, we'll simulate the process with a delay
-
-=======
   console.log(`Loading data from ${dbType} database:`, 
     { ...config, password: config.password ? '***HIDDEN***' : undefined });
   console.log(`Query/Table: ${query}, isTable: ${isTable}`);
   
->>>>>>> 75491e2cd26e92928f294bd611bb775b6755452f
   // Set initial progress state
   onProgressUpdate({
     status: 'connecting',
