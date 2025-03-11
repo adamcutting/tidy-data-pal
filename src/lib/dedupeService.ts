@@ -330,15 +330,11 @@ export const deduplicateWithSplink = async (
     });
   }
   
-  // Format data in smaller chunks to prevent UI freezing
   let payload;
   
-  // Use setTimeout to yield to the main thread
-  await new Promise(resolve => setTimeout(resolve, 0));
-  
   try {
-    // Format data for the Splink API
-    payload = formatDataForSplinkApi(data, mappedColumns, config);
+    // Format data for the Splink API with chunking and progress updates
+    payload = await formatDataForSplinkApi(data, mappedColumns, config, onProgress);
     
     // Update progress
     if (onProgress) {

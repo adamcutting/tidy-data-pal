@@ -1,20 +1,21 @@
-
 import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress } from './types';
 
 /**
  * Prepares and formats data for the Splink API according to its expected structure
+ * Uses chunking to prevent UI freezing with large datasets
  */
-export const formatDataForSplinkApi = (
+export const formatDataForSplinkApi = async (
   data: any[],
   mappedColumns: MappedColumn[],
-  config: DedupeConfig
-): {
+  config: DedupeConfig,
+  onProgress?: (progress: DedupeProgress) => void
+): Promise<{
   unique_id_column: string;
   blocking_fields: string[];
   match_fields: { field: string; type: string }[];
   input_data: any[];
   output_dir?: string;
-} => {
+}> => {
   // Get columns that are included in the deduplication
   const includedColumns = mappedColumns
     .filter(col => col.include && col.mappedName)
@@ -44,14 +45,44 @@ export const formatDataForSplinkApi = (
     };
   });
 
-  // Add a simple unique ID if needed
-  const dataWithIds = data.map((row, index) => {
-    // If the unique ID column doesn't exist in the data, add it
-    if (!row[uniqueIdColumn]) {
-      return { ...row, [uniqueIdColumn]: `id-${index}` };
+  // Process data in chunks to prevent UI freezing
+  const chunkSize = 1000; // Process 1000 records at a time
+  const totalChunks = Math.ceil(data.length / chunkSize);
+  const processedData: any[] = [];
+  
+  for (let i = 0; i < totalChunks; i++) {
+    // Yield to the main thread before processing each chunk
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    // Update progress if callback is provided
+    if (onProgress) {
+      const progressPercentage = 30 + (i / totalChunks) * 10; // Spread from 30% to 40%
+      onProgress({
+        status: 'processing',
+        percentage: Math.round(progressPercentage),
+        statusMessage: `Preparing data for Splink API (chunk ${i+1}/${totalChunks})...`,
+        recordsProcessed: i * chunkSize,
+        totalRecords: data.length
+      });
     }
-    return row;
-  });
+    
+    // Process this chunk
+    const startIdx = i * chunkSize;
+    const endIdx = Math.min(startIdx + chunkSize, data.length);
+    const chunk = data.slice(startIdx, endIdx);
+    
+    // Add a simple unique ID if needed for this chunk
+    const processedChunk = chunk.map((row, index) => {
+      // If the unique ID column doesn't exist in the data, add it
+      if (!row[uniqueIdColumn]) {
+        return { ...row, [uniqueIdColumn]: `id-${startIdx + index}` };
+      }
+      return row;
+    });
+    
+    // Add processed chunk to results
+    processedData.push(...processedChunk);
+  }
 
   // Generate a unique job ID for tracking
   const jobId = `job_${new Date().getTime()}_${Math.random().toString(36).substring(2, 10)}`;
@@ -61,7 +92,7 @@ export const formatDataForSplinkApi = (
     unique_id_column: uniqueIdColumn,
     blocking_fields: blockingFields,
     match_fields: matchFields,
-    input_data: dataWithIds,
+    input_data: processedData,
     job_id: jobId // Add the job ID to the payload
   };
 

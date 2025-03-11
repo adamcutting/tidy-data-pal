@@ -110,12 +110,22 @@ const Index = () => {
       try {
         setTimeout(async () => {
           try {
+            const dataSize = fileData.data.length;
+            
+            if (dataSize > 10000) {
+              toast.info(`Processing a large dataset (${dataSize.toLocaleString()} records). This may take some time.`);
+            }
+            
             const result = await deduplicateData(
               fileData.data, 
               mappedColumns, 
               fullConfig, 
               (progressUpdate) => {
                 setProgress(progressUpdate);
+                
+                if (progressUpdate.status === 'processing' && progressUpdate.percentage > 0 && progressUpdate.percentage % 10 === 0) {
+                  console.log(`Progress update: ${progressUpdate.percentage}% - ${progressUpdate.statusMessage}`);
+                }
               }
             );
             
