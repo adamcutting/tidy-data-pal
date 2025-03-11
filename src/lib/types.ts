@@ -74,6 +74,7 @@ export interface SplinkSettings {
   apiKey?: string;
   pythonPath?: string;
   scriptPath?: string;
+  outputDir?: string;  // Added for specifying output directory
 }
 
 export interface MySQLConfig {

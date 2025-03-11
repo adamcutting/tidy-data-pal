@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Settings, Check, AlertTriangle } from 'lucide-react';
+import { Settings, Check, AlertTriangle, Server } from 'lucide-react';
 import { getSplinkSettings, saveSplinkSettings, testSplinkConnection } from '@/lib/dedupeService';
 import { SplinkSettings as SplinkSettingsType } from '@/lib/types';
 import { Spinner } from '@/components/ui/spinner';
@@ -147,13 +147,27 @@ const SplinkSettings: React.FC<SplinkSettingsProps> = ({ onSettingsChange }) => 
               </p>
             </div>
             
+            <div className="grid gap-2">
+              <Label htmlFor="outputDir">Results Directory (Optional)</Label>
+              <Input
+                id="outputDir"
+                name="outputDir"
+                value={settings.outputDir || ''}
+                onChange={handleInputChange}
+                placeholder="D:/SplinkProjects/results"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Directory where results will be saved on the server (if applicable)
+              </p>
+            </div>
+            
             <Button 
               type="button" 
               variant="outline" 
               onClick={handleTestConnection}
               disabled={isTesting}
             >
-              {isTesting ? <Spinner /> : null}
+              {isTesting ? <Spinner /> : <Server className="h-4 w-4 mr-2" />}
               Test Connection
             </Button>
           </div>
