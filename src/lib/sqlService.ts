@@ -1,30 +1,6 @@
 
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 import { toast } from 'sonner';
-import * as mssql from 'mssql';
-
-// Function to create a connection pool for SQL Server
-const createMSSQLPool = async (config: MSSQLConfig) => {
-  const { server, port, user, password, database, options } = config;
-  
-  const poolConfig = {
-    server,
-    port,
-    user,
-    password,
-    database,
-    options: {
-      encrypt: options?.encrypt ?? true,
-      trustServerCertificate: options?.trustServerCertificate ?? false,
-      ...options
-    }
-  };
-
-  console.log('Creating MSSQL connection pool with config:', 
-    { ...poolConfig, password: '***HIDDEN***' });
-  
-  return await new mssql.ConnectionPool(poolConfig).connect();
-};
 
 // Mock polling interval in ms (in a real implementation this would call an actual backend API)
 const POLLING_INTERVAL = 1500;
@@ -39,45 +15,46 @@ export const getDatabaseMetadata = async (
 
   if (dbType === 'mssql') {
     try {
-      // Create a connection to SQL Server
-      const pool = await createMSSQLPool(config as MSSQLConfig);
+      // Mock MSSQL metadata fetch
+      console.log("Simulating connection to SQL Server and fetching tables and views...");
       
-      console.log("Connected to SQL Server, now fetching tables and views...");
+      // Wait for a bit to simulate network request
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Query to get all user tables
-      const tablesResult = await pool.request().query(`
-        SELECT TABLE_NAME
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo'
-        ORDER BY TABLE_NAME
-      `);
-      
-      // Query to get all views
-      const viewsResult = await pool.request().query(`
-        SELECT TABLE_NAME
-        FROM INFORMATION_SCHEMA.VIEWS
-        WHERE TABLE_SCHEMA = 'dbo'
-        ORDER BY TABLE_NAME
-      `);
-      
-      // Process results
-      const tables = tablesResult.recordset.map((row: any) => row.TABLE_NAME);
-      const views = viewsResult.recordset.map((row: any) => row.TABLE_NAME);
+      // Return mock data
+      const tables = ['Customers', 'Orders', 'Products', 'Suppliers', 'Categories', 'Employees'];
+      const views = ['CustomerOrders', 'ProductInventory', 'SalesReport'];
       
       console.log("Fetched tables:", tables);
       console.log("Fetched views:", views);
-      
-      // Close the connection pool
-      await pool.close();
       
       return { tables, views };
     } catch (error) {
       console.error('Error fetching SQL Server metadata:', error);
       throw new Error(`Failed to fetch database metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  } else if (dbType === 'mysql') {
+    try {
+      // Mock MySQL metadata fetch
+      console.log("Simulating connection to MySQL and fetching tables and views...");
+      
+      // Wait for a bit to simulate network request
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Return mock data for MySQL
+      const tables = ['users', 'orders', 'products', 'categories', 'payments', 'inventory'];
+      const views = ['active_users', 'order_summary', 'product_stock'];
+      
+      console.log("Fetched MySQL tables:", tables);
+      console.log("Fetched MySQL views:", views);
+      
+      return { tables, views };
+    } catch (error) {
+      console.error('Error fetching MySQL metadata:', error);
+      throw new Error(`Failed to fetch MySQL database metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   } else {
-    // MySQL implementation
-    throw new Error('MySQL connection is not implemented in this version');
+    throw new Error(`Unsupported database type: ${dbType}`);
   }
 };
 
