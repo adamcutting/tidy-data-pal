@@ -1,5 +1,3 @@
-
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -31,7 +29,7 @@ export interface DedupeConfig {
   blockingColumns: string[];
   derivedBlockingRules?: DerivedBlockingRule[];
   threshold: number;
-  useSplink?: boolean; // Toggle between local and Splink backend
+  useSplink: boolean; // Will be set to true by default now
   splinkParams?: {
     termFrequencyAdjustments?: boolean;
     retainMatchingColumns?: boolean;
@@ -71,6 +69,7 @@ export interface DedupeResult {
   flaggedData: any[]; // Data with duplicate flags
   resultId?: string;  // Added for API result reference
   jobId?: string;     // Added for progress tracking
+  processingTimeMs?: number; // Added for processing time tracking
 }
 
 export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results';

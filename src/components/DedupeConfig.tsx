@@ -62,11 +62,6 @@ interface DedupeConfigProps {
   isProcessing: boolean;
 }
 
-// Define a proper interface for SplinkSettings props
-interface SplinkSettingsProps {
-  form: ReturnType<typeof useForm<DedupeConfigType>>;
-}
-
 const DedupeConfig: React.FC<DedupeConfigProps> = ({ 
   mappedColumns, 
   onConfigComplete, 
@@ -85,8 +80,9 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
       name: '',
       comparisons: [{ column: '', matchType: 'exact', threshold: 0.8 }],
       blockingColumns: [],
+      derivedBlockingRules: [],
       threshold: 0.8,
-      useSplink: false,
+      useSplink: true, // Default to true
       splinkParams: {
         termFrequencyAdjustments: true,
         retainMatchingColumns: true,
@@ -108,10 +104,19 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
     control: form.control,
     name: "blockingColumns" as any // This is a workaround for the TypeScript error
   });
+  
+  // Add derived blocking rules functionality back
+  const { fields: derivedBlockingFields, append: derivedBlockingAppend, remove: derivedBlockingRemove } = useFieldArray({
+    control: form.control,
+    name: "derivedBlockingRules" as any
+  });
 
   // Handle form submission
   const onSubmit = (data: DedupeConfigType) => {
     try {
+      // Ensure useSplink is always true
+      data.useSplink = true;
+      
       const savedConfig = saveConfiguration(data);
       setSavedConfigs(getConfigurations());
       setSelectedConfig(savedConfig.id);
@@ -125,6 +130,8 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
   const handleLoadConfig = (configId: string) => {
     const config = savedConfigs.find(c => c.id === configId)?.config;
     if (config) {
+      // Ensure useSplink is always true when loading config
+      config.useSplink = true;
       form.reset(config);
       setSelectedConfig(configId);
       toast.success(`Configuration "${config.name}" loaded successfully!`);
@@ -156,6 +163,18 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
 
   const handleRemoveBlockingColumn = (index: number) => {
     blockingRemove(index);
+  };
+  
+  const handleAddDerivedBlockingRule = () => {
+    derivedBlockingAppend({
+      type: 'postcode-district',
+      sourceColumn: '',
+      targetColumn: ''
+    }) as any;
+  };
+  
+  const handleRemoveDerivedBlockingRule = (index: number) => {
+    derivedBlockingRemove(index);
   };
 
   return (
@@ -303,15 +322,18 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                                 control={form.control}
                                 name={`comparisons.${index}.threshold` as const}
                                 render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Threshold</FormLabel>
+                                  <FormItem className="space-y-2">
+                                    <FormLabel>Threshold: {(field.value || 0.8).toFixed(2)}</FormLabel>
                                     <FormControl>
-                                      <Slider
-                                        defaultValue={[field.value || 0.8]}
-                                        max={1}
-                                        step={0.05}
-                                        onValueChange={(value) => field.onChange(value[0])}
-                                      />
+                                      <div className="flex items-center space-x-2">
+                                        <Slider
+                                          defaultValue={[field.value || 0.8]}
+                                          max={1}
+                                          step={0.05}
+                                          onValueChange={(value) => field.onChange(value[0])}
+                                        />
+                                        <span className="w-12 text-sm">{((field.value || 0.8) * 100).toFixed(0)}%</span>
+                                      </div>
                                     </FormControl>
                                     <FormDescription>
                                       Set the similarity threshold for fuzzy matching.
@@ -359,56 +381,163 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-[200px] rounded-md border p-4">
-                    <div className="space-y-2">
-                      {blockingFields.map((field, index) => (
-                        <div key={field.id} className="flex items-center space-x-2">
-                          <FormField
-                            control={form.control}
-                            name={`blockingColumns.${index}` as const}
-                            render={({ field }) => (
-                              <FormItem className="flex-1">
-                                <FormControl>
-                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Standard Blocking Columns</h4>
+                      <ScrollArea className="h-[200px] rounded-md border p-4">
+                        <div className="space-y-2">
+                          {blockingFields.map((field, index) => (
+                            <div key={field.id} className="flex items-center space-x-2">
+                              <FormField
+                                control={form.control}
+                                name={`blockingColumns.${index}` as const}
+                                render={({ field }) => (
+                                  <FormItem className="flex-1">
                                     <FormControl>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select a column" />
-                                      </SelectTrigger>
+                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Select a column" />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          {mappedColumns.filter(col => col.include).map((column) => (
+                                            <SelectItem key={column.originalName} value={column.mappedName || ''}>
+                                              {column.mappedName}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </FormControl>
-                                    <SelectContent>
-                                      {mappedColumns.filter(col => col.include).map((column) => (
-                                        <SelectItem key={column.originalName} value={column.mappedName || ''}>
-                                          {column.mappedName}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveBlockingColumn(index)}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
+                                  </FormItem>
+                                )}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveBlockingColumn(index)}
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </ScrollArea>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddBlockingColumn}
+                        className="mt-2"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Blocking Column
+                      </Button>
                     </div>
-                  </ScrollArea>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddBlockingColumn}
-                    className="mt-4"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Blocking Column
-                  </Button>
+                    
+                    <Separator className="my-4" />
+                    
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Derived Blocking Rules</h4>
+                      <div className="space-y-3">
+                        {derivedBlockingFields.map((field, index) => (
+                          <Card key={field.id} className="p-4 border">
+                            <div className="grid gap-3">
+                              <FormField
+                                control={form.control}
+                                name={`derivedBlockingRules.${index}.type` as const}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Rule Type</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                      <FormControl>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select rule type" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        <SelectItem value="postcode-district">Postcode District</SelectItem>
+                                        <SelectItem value="postcode-sector">Postcode Sector</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <FormDescription>
+                                      Type of derived blocking rule to apply
+                                    </FormDescription>
+                                  </FormItem>
+                                )}
+                              />
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <FormField
+                                  control={form.control}
+                                  name={`derivedBlockingRules.${index}.sourceColumn` as const}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Source Column</FormLabel>
+                                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Select source column" />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          {mappedColumns.filter(col => col.include).map((column) => (
+                                            <SelectItem key={column.originalName} value={column.mappedName || ''}>
+                                              {column.mappedName}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </FormItem>
+                                  )}
+                                />
+                                
+                                <FormField
+                                  control={form.control}
+                                  name={`derivedBlockingRules.${index}.targetColumn` as const}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Target Column Name</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="Generated column name"
+                                          {...field}
+                                          value={field.value || `${form.watch(`derivedBlockingRules.${index}.sourceColumn`)}_${form.watch(`derivedBlockingRules.${index}.type`)}`}
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                              
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleRemoveDerivedBlockingRule(index)}
+                                className="w-full mt-2"
+                              >
+                                <Minus className="h-4 w-4 mr-2" />
+                                Remove Rule
+                              </Button>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddDerivedBlockingRule}
+                          className="w-full"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Derived Blocking Rule
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -429,15 +558,18 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                     control={form.control}
                     name="threshold"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Overall Similarity Threshold</FormLabel>
+                      <FormItem className="space-y-2">
+                        <FormLabel>Overall Similarity Threshold: {field.value.toFixed(2)}</FormLabel>
                         <FormControl>
-                          <Slider
-                            defaultValue={[field.value || 0.8]}
-                            max={1}
-                            step={0.05}
-                            onValueChange={(value) => field.onChange(value[0])}
-                          />
+                          <div className="flex items-center space-x-2">
+                            <Slider
+                              defaultValue={[field.value || 0.8]}
+                              max={1}
+                              step={0.05}
+                              onValueChange={(value) => field.onChange(value[0])}
+                            />
+                            <span className="w-12 text-sm">{(field.value * 100).toFixed(0)}%</span>
+                          </div>
                         </FormControl>
                         <FormDescription>
                           Set the overall similarity threshold for considering records as duplicates.
@@ -445,31 +577,9 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="useSplink"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">
-                            Use Splink Backend
-                          </FormLabel>
-                          <FormDescription>
-                            Enable the Splink backend for faster and more accurate deduplication.
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  {form.watch('useSplink') && (
-                    <SplinkSettings form={form} />
-                  )}
+                  
+                  {/* Removed useSplink toggle since we always use it now */}
+                  <SplinkSettings form={form} onSettingsChange={() => {}} />
                 </CardContent>
               </Card>
             </TabsContent>

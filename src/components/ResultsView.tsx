@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Download, FileCheck, Calculator, ArrowRight, BarChart3, Filter } from 'lucide-react';
+import { Download, FileCheck, Calculator, ArrowRight, BarChart3, Filter, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { 
   DropdownMenu,
@@ -40,10 +40,15 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
   };
 
   const percentReduction = Math.round((result.duplicateRows / result.originalRows) * 100);
+  
+  // Format processing time (convert ms to seconds with 2 decimal places)
+  const formattedProcessingTime = result.processingTimeMs 
+    ? (result.processingTimeMs / 1000).toFixed(2) 
+    : 'N/A';
 
   return (
     <div className="w-full max-w-3xl mx-auto animate-fade-in">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-card rounded-lg border p-6 flex flex-col items-center text-center">
           <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
             <Calculator className="h-8 w-8 text-primary" />
@@ -67,6 +72,17 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
           <p className="text-muted-foreground">Total Records</p>
           <p className="text-xs text-muted-foreground mt-2">
             {result.duplicateRows} duplicates removed
+          </p>
+        </div>
+        
+        <div className="bg-card rounded-lg border p-6 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+            <Clock className="h-8 w-8 text-amber-600" />
+          </div>
+          <h3 className="text-2xl font-bold">{formattedProcessingTime}s</h3>
+          <p className="text-muted-foreground">Processing Time</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {(result.originalRows / (result.processingTimeMs || 1) * 1000).toFixed(0)} records/sec
           </p>
         </div>
       </div>
@@ -100,6 +116,10 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
               <li className="flex justify-between">
                 <span className="text-muted-foreground">Duplicate clusters:</span>
                 <span>{result.clusters.filter(c => c.length > 1).length}</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-muted-foreground">Processing time:</span>
+                <span>{formattedProcessingTime} seconds</span>
               </li>
             </ul>
           </div>
