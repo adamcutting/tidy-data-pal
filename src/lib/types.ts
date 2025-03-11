@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -38,6 +39,7 @@ export interface DedupeConfig {
     uniqueIdColumn?: string; // Used for Splink's unique ID requirement
     pythonPath?: string;     // Path to Python executable (only needed for local Splink)
   };
+  splinkSettings?: SplinkSettings; // Added to support outputDir and other Splink settings
   dataSource: 'file' | 'database';
   databaseConfig?: {
     databaseType: DatabaseType;

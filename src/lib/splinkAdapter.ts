@@ -62,8 +62,10 @@ export const formatDataForSplinkApi = (
   };
 
   // Add output directory if specified in settings
-  if (config.splinkParams?.outputDir) {
-    payload['output_dir'] = config.splinkParams.outputDir;
+  // Fix: Get the outputDir from the SplinkSettings which has been loaded separately
+  // This assumes the outputDir is passed from the SplinkSettings component
+  if (config.splinkSettings?.outputDir) {
+    payload['output_dir'] = config.splinkSettings.outputDir;
   }
 
   return payload;
