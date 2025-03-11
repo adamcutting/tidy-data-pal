@@ -77,7 +77,7 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
           options: {
             encrypt,
             trustServerCertificate: trustServerCert,
-            authentication: authType,
+            authentication: authType === 'windows' ? 'ntlm' : 'default',
             domain: authType === 'windows' ? domain : undefined
           }
         };
@@ -131,7 +131,7 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
           options: {
             encrypt,
             trustServerCertificate: trustServerCert,
-            authentication: authType,
+            authentication: authType === 'windows' ? 'ntlm' : 'default',
             domain: authType === 'windows' ? domain : undefined
           }
         };
