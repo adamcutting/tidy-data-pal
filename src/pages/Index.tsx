@@ -19,7 +19,7 @@ import {
   MySQLConfig,
   MSSQLConfig
 } from '@/lib/types';
-import { deduplicateData, testSplinkConnection } from '@/lib/dedupeService';
+import { deduplicateData } from '@/lib/dedupeService';
 import { loadDatabaseData, pollDedupeStatus } from '@/lib/sqlService';
 
 const Index = () => {
@@ -77,14 +77,6 @@ const Index = () => {
     } catch (error) {
       console.error('Database connection error:', error);
       toast.error(`Failed to connect to database: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
-      // Reset processing state so user can try again
-      setProgress({
-        status: 'failed',
-        percentage: 0,
-        statusMessage: 'Database connection failed',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
     } finally {
       setIsProcessing(false);
     }
@@ -101,7 +93,6 @@ const Index = () => {
     const fullConfig: DedupeConfigType = {
       ...config,
       dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
-      useSplink: true // Always use Splink
     };
     
     setDedupeConfig(fullConfig);
@@ -117,21 +108,7 @@ const Index = () => {
         statusMessage: 'Initializing deduplication process...'
       });
       
-      // First, check if Splink API is available
-      const isSplink = await testSplinkConnection();
-      if (!isSplink) {
-        setIsProcessing(false);
-        setProgress({
-          status: 'failed',
-          percentage: 0,
-          statusMessage: 'Splink API is not available',
-          error: 'Cannot connect to Splink API. Please check your settings.'
-        });
-        toast.error('Cannot connect to Splink API. Please check your settings.');
-        return;
-      }
-      
-      toast.info('Starting deduplication process with Splink...');
+      toast.info('Starting deduplication process...');
       
       try {
         // Start deduplication process

@@ -1,114 +1,28 @@
-import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
-import { toast } from 'sonner';
-import * as mssql from 'mssql';
 
-// Polling interval in ms for checking job status
+import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
+
+// Mock polling interval in ms (in a real implementation this would call an actual backend API)
 const POLLING_INTERVAL = 1500;
 
-/**
- * Function to get database metadata (tables and views) from a SQL database
- */
+// Mock function to get database metadata (tables and views)
 export const getDatabaseMetadata = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig
 ): Promise<DatabaseMetadata> => {
-  console.log(`Fetching metadata for ${dbType} database:`, config);
-
-  if (dbType === 'mssql') {
-    try {
-      // Create a connection to SQL Server
-      const pool = await createMSSQLPool(config as MSSQLConfig);
-      
-      // Query to get all user tables
-      const tablesResult = await pool.request().query(`
-        SELECT TABLE_NAME
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo'
-        ORDER BY TABLE_NAME
-      `);
-      
-      // Query to get all views
-      const viewsResult = await pool.request().query(`
-        SELECT TABLE_NAME
-        FROM INFORMATION_SCHEMA.VIEWS
-        WHERE TABLE_SCHEMA = 'dbo'
-        ORDER BY TABLE_NAME
-      `);
-      
-      // Process results
-      const tables = tablesResult.recordset.map((row: any) => row.TABLE_NAME);
-      const views = viewsResult.recordset.map((row: any) => row.TABLE_NAME);
-      
-      console.log("Fetched tables:", tables);
-      console.log("Fetched views:", views);
-      
-      // Close the connection pool
-      await pool.close();
-      
-      return { tables, views };
-    } catch (error) {
-      console.error('Error fetching SQL Server metadata:', error);
-      throw new Error(`Failed to fetch database metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  } else {
-    // MySQL implementation
-    throw new Error('MySQL connection is not implemented in this version');
-  }
+  // Simulate API call delay
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Generate mock tables and views based on database type
+  const tables = ['customers', 'orders', 'products', 'suppliers', 'employees'];
+  const views = ['vw_customer_orders', 'vw_product_inventory', 'vw_sales_summary'];
+  
+  return {
+    tables,
+    views
+  };
 };
 
-/**
- * Helper function to create an MSSQL connection pool
- */
-const createMSSQLPool = async (config: MSSQLConfig): Promise<mssql.ConnectionPool> => {
-  try {
-    const sqlConfig: mssql.config = {
-      server: config.server,
-      port: config.port,
-      database: config.database,
-      options: {
-        encrypt: config.options?.encrypt ?? false,
-        trustServerCertificate: config.options?.trustServerCertificate ?? false,
-      },
-      pool: {
-        max: 10,
-        min: 0,
-        idleTimeoutMillis: 30000
-      }
-    };
-    
-    // Handle different authentication methods
-    if (config.options?.authentication === 'windows') {
-      sqlConfig.authentication = {
-        type: 'ntlm',
-        options: {
-          domain: config.options.domain,
-          // When using Windows Auth with domain, leaving user/pass empty uses current Windows credentials
-          userName: config.user || undefined,
-          password: config.password || undefined
-        }
-      };
-    } else {
-      // SQL Server authentication
-      sqlConfig.user = config.user;
-      sqlConfig.password = config.password;
-    }
-    
-    console.log('Creating SQL Server connection with config:', 
-      { ...sqlConfig, password: sqlConfig.password ? '***HIDDEN***' : undefined });
-    
-    const pool = new mssql.ConnectionPool(sqlConfig);
-    await pool.connect();
-    console.log('Connected to SQL Server successfully');
-    return pool;
-  } catch (error) {
-    console.error('Error creating SQL Server connection:', error);
-    throw new Error(`Failed to connect to SQL Server: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-};
-
-/**
- * Function to load data from a database
- */
+// Mock function to load data from a database
 export const loadDatabaseData = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig,
@@ -116,9 +30,9 @@ export const loadDatabaseData = async (
   isTable: boolean,
   onProgressUpdate: (progress: DedupeProgress) => void
 ): Promise<any[]> => {
-  console.log(`Loading data from ${dbType} database:`, config);
-  console.log(`Query/Table: ${query}, isTable: ${isTable}`);
-  
+  // In a real implementation, this would make an API call to a backend service
+  // For now, we'll simulate the process with a delay
+
   // Set initial progress state
   onProgressUpdate({
     status: 'connecting',
@@ -126,58 +40,71 @@ export const loadDatabaseData = async (
     statusMessage: `Connecting to ${dbType} database...`,
   });
 
-  if (dbType === 'mssql') {
-    try {
-      // Create a connection to SQL Server
-      const pool = await createMSSQLPool(config as MSSQLConfig);
-      
-      onProgressUpdate({
-        status: 'loading',
-        percentage: 30,
-        statusMessage: isTable ? 
-          `Loading data from table "${query}"...` : 
-          'Executing query and loading results...',
-      });
-      
-      // Build the SQL query
-      const sqlQuery = isTable ? `SELECT * FROM [${query}]` : query;
-      console.log('Executing SQL query:', sqlQuery);
-      
-      // Execute the query
-      const result = await pool.request().query(sqlQuery);
-      const data = result.recordset;
-      
-      console.log(`Loaded ${data.length} rows from SQL Server`);
-      
-      // Final progress update
-      onProgressUpdate({
-        status: 'completed',
-        percentage: 100,
-        statusMessage: `Successfully loaded ${data.length} records from database.`,
-        recordsProcessed: data.length,
-        totalRecords: data.length
-      });
-      
-      // Close the connection pool
-      await pool.close();
-      
-      return data;
-    } catch (error) {
-      console.error('Error loading SQL Server data:', error);
-      
-      onProgressUpdate({
-        status: 'failed',
-        percentage: 0,
-        statusMessage: `Failed to load data: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      
-      throw new Error(`Failed to load data from SQL Server: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  // Simulate connection delay
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  // Update progress to loading
+  onProgressUpdate({
+    status: 'loading',
+    percentage: 30,
+    statusMessage: isTable ? 
+      `Loading data from table "${query}"...` : 
+      'Executing query and loading results...',
+  });
+
+  // Simulate data loading delay
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  // Generate mock data based on the database type and config
+  const mockData = generateMockData(query, 1000);
+
+  // Final progress update
+  onProgressUpdate({
+    status: 'completed',
+    percentage: 100,
+    statusMessage: `Successfully loaded ${mockData.length} records from database.`,
+    recordsProcessed: mockData.length,
+    totalRecords: mockData.length
+  });
+
+  return mockData;
+};
+
+// Function to generate mock data for demonstration
+const generateMockData = (tableOrQuery: string, count: number): any[] => {
+  const data = [];
+  
+  // Generate column names based on the 'table name'
+  const columns = ['id', 'company_name', 'address_line_1', 'address_line_2', 'city', 'state', 'postcode', 'phone'];
+
+  // Generate mock data rows
+  for (let i = 0; i < count; i++) {
+    const row: Record<string, any> = {};
+    
+    // Add an ID
+    row['id'] = i + 1;
+    
+    // Add company name (with some duplicates for testing)
+    if (i % 10 === 0 && i > 0) {
+      // Create near-duplicate with slight variation
+      const prevIndex = i - (i % 5 === 0 ? 5 : 1);
+      row['company_name'] = data[prevIndex]['company_name'] + (i % 3 === 0 ? ' Ltd' : '');
+    } else {
+      row['company_name'] = `Company ${i + 1}`;
     }
-  } else {
-    // MySQL implementation
-    throw new Error('MySQL connection is not implemented in this version');
+    
+    // Add address fields
+    row['address_line_1'] = `${i + 100} Main Street`;
+    row['address_line_2'] = i % 3 === 0 ? `Suite ${i % 10 + 1}` : '';
+    row['city'] = i % 5 === 0 ? 'London' : i % 5 === 1 ? 'Manchester' : i % 5 === 2 ? 'Birmingham' : i % 5 === 3 ? 'Edinburgh' : 'Glasgow';
+    row['state'] = '';
+    row['postcode'] = `${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + ((i + 1) % 26))}${i % 10}${i % 10} ${i % 10}${String.fromCharCode(65 + ((i + 2) % 26))}${String.fromCharCode(65 + ((i + 3) % 26))}`;
+    row['phone'] = `+44 ${Math.floor(Math.random() * 1000).toString().padStart(3, '0')} ${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`;
+    
+    data.push(row);
   }
+  
+  return data;
 };
 
 // Polling function to check dedupe status
