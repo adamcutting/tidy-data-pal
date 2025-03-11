@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, XCircle } from "lucide-react";
+import { RefreshCw, AlertTriangle, XCircle, Info } from "lucide-react";
 import { toast } from "sonner";
 
 export interface DedupeProgress {
@@ -15,6 +15,7 @@ export interface DedupeProgress {
   recordsProcessed?: number;
   totalRecords?: number;
   error?: string;
+  debugInfo?: string; // Added for detailed debugging information
 }
 
 interface ProgressIndicatorProps {
@@ -28,12 +29,23 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
   const [isLongRunning, setIsLongRunning] = useState<boolean>(false);
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
+  const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
+  const [lastProgressUpdate, setLastProgressUpdate] = useState<number>(Date.now());
+  const [stalled, setStalled] = useState<boolean>(false);
+  
+  // Track when progress updates come in
+  useEffect(() => {
+    setLastProgressUpdate(Date.now());
+    setStalled(false);
+  }, [progress]);
   
   useEffect(() => {
     let timer: number | null = null;
+    let stalledCheckTimer: number | null = null;
 
     // Only start the timer if process is running
     if (progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'cancelled') {
+      // Timer for elapsed time
       timer = window.setInterval(() => {
         setTimeElapsed(prev => {
           const newTime = prev + 1;
@@ -47,14 +59,34 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
           return newTime;
         });
       }, 1000);
+      
+      // Timer to check if progress has stalled
+      stalledCheckTimer = window.setInterval(() => {
+        const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
+        // If no update in 15 seconds and not already marked as stalled
+        if (timeSinceLastUpdate > 15000 && !stalled) {
+          setStalled(true);
+          console.warn(`Process appears to be stalled. No updates for ${Math.floor(timeSinceLastUpdate/1000)} seconds.`);
+          toast.warning("Processing appears to be stalled. Browser may be unresponsive due to large data processing.", {
+            duration: 10000,
+            action: {
+              label: "Cancel Job",
+              onClick: () => onCancel && onCancel()
+            }
+          });
+        }
+      }, 5000);
     }
 
     return () => {
       if (timer !== null) {
         clearInterval(timer);
       }
+      if (stalledCheckTimer !== null) {
+        clearInterval(stalledCheckTimer);
+      }
     };
-  }, [progress.status, isLongRunning]);
+  }, [progress.status, isLongRunning, lastProgressUpdate, stalled, onCancel]);
 
   // Format time elapsed
   const formatTime = (seconds: number): string => {
@@ -71,7 +103,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       case 'processing':
       case 'blocked':
       case 'clustering':
-        return 'text-amber-500';
+        return stalled ? 'text-red-500' : 'text-amber-500';
       case 'completed':
         return 'text-green-500';
       case 'failed':
@@ -98,6 +130,15 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
     }
   };
 
+  const toggleDebugInfo = () => {
+    setShowDebugInfo(!showDebugInfo);
+    
+    // If showing debug info, log current progress state to console
+    if (!showDebugInfo) {
+      console.log('Current progress state:', progress);
+    }
+  };
+
   // Reset cancelling state if status changes to cancelled or failed
   useEffect(() => {
     if (progress.status === 'cancelled' || progress.status === 'failed') {
@@ -115,7 +156,18 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
           <span>Deduplication Progress</span>
           <span className={`text-sm font-normal ${getStatusColor()}`}>
             {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
+            {stalled && " (Stalled)"}
           </span>
+          
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="ml-auto h-6 w-6" 
+            onClick={toggleDebugInfo}
+            title="Toggle debug information"
+          >
+            <Info className="h-4 w-4" />
+          </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -128,7 +180,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <p className="text-muted-foreground">Time elapsed:</p>
-                <p className="font-mono">{formatTime(timeElapsed)}</p>
+                <p className={`font-mono ${stalled ? 'text-red-500' : ''}`}>{formatTime(timeElapsed)}</p>
               </div>
               
               {progress.estimatedTimeRemaining && (
@@ -150,6 +202,22 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
                 value={(progress.recordsProcessed / progress.totalRecords) * 100}
                 className="h-1 mt-1"
               />
+            </div>
+          )}
+          
+          {/* Show debug information if enabled */}
+          {showDebugInfo && (
+            <div className="mt-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-md">
+              <p className="text-xs font-bold mb-1">Debug Information:</p>
+              <div className="text-xs font-mono overflow-auto max-h-40 whitespace-pre-wrap">
+                <p>Status: {progress.status}</p>
+                <p>Percentage: {progress.percentage}%</p>
+                <p>Last update: {new Date(lastProgressUpdate).toISOString()}</p>
+                <p>Time since update: {Math.floor((Date.now() - lastProgressUpdate)/1000)}s</p>
+                <p>Stalled: {stalled ? 'Yes' : 'No'}</p>
+                {progress.debugInfo && <p>Details: {progress.debugInfo}</p>}
+                {jobId && <p>Job ID: {jobId}</p>}
+              </div>
             </div>
           )}
           

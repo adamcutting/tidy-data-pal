@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -157,4 +158,5 @@ export type DedupeProgress = {
   chunked?: boolean; // Added for large dataset support
   currentChunk?: number; // Added for large dataset support
   totalChunks?: number; // Added for large dataset support
+  debugInfo?: string; // Added for detailed debugging information
 };

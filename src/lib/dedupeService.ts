@@ -325,16 +325,24 @@ export const deduplicateWithSplink = async (
       status: 'processing',
       percentage: 30,
       statusMessage: 'Preparing data for Splink API...',
-      recordsProcessed: Math.floor(data.length * 0.3),
-      totalRecords: data.length
+      recordsProcessed: 0,
+      totalRecords: data.length,
+      debugInfo: `Starting data preparation, ${data.length} total records`
     });
   }
   
   let payload;
   
   try {
+    console.log('=== SPLINK PROCESSING START ===');
+    console.log(`Processing ${data.length} records with ${mappedColumns.length} mapped columns`);
+    console.time('formatDataForSplinkApi');
+    
     // Format data for the Splink API with chunking and progress updates
     payload = await formatDataForSplinkApi(data, mappedColumns, config, onProgress);
+    
+    console.timeEnd('formatDataForSplinkApi');
+    console.log('Payload prepared successfully');
     
     // Update progress
     if (onProgress) {
@@ -342,8 +350,9 @@ export const deduplicateWithSplink = async (
         status: 'processing',
         percentage: 40,
         statusMessage: 'Sending data to Splink API for processing...',
-        recordsProcessed: Math.floor(data.length * 0.4),
-        totalRecords: data.length
+        recordsProcessed: data.length,
+        totalRecords: data.length,
+        debugInfo: `Data preparation complete, sending to API`
       });
     }
     
@@ -352,6 +361,7 @@ export const deduplicateWithSplink = async (
     
     // Make the API request
     console.log('Sending data to Splink API:', splinkSettings.apiUrl);
+    console.time('splinkApiRequest');
     
     const response = await fetch(splinkSettings.apiUrl, {
       method: 'POST',
@@ -362,12 +372,17 @@ export const deduplicateWithSplink = async (
       body: JSON.stringify(payload)
     });
     
+    console.timeEnd('splinkApiRequest');
+    
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('API request failed:', errorText);
       throw new Error(`Splink API error: ${errorText}`);
     }
     
+    console.log('API request successful, parsing response');
     const apiResponse = await response.json();
+    console.log('API response received:', apiResponse);
     
     // Update progress
     if (onProgress) {
@@ -376,14 +391,26 @@ export const deduplicateWithSplink = async (
         percentage: 60,
         statusMessage: 'Job submitted successfully. Waiting for processing...',
         recordsProcessed: Math.floor(data.length * 0.6),
-        totalRecords: data.length
+        totalRecords: data.length,
+        debugInfo: `Job submitted with ID: ${apiResponse.job_id || 'unknown'}`
       });
     }
+    
+    console.log('=== SPLINK PROCESSING COMPLETE ===');
     
     // Process the API response
     return processSplinkResponse(apiResponse, data);
   } catch (error) {
     console.error('Error using Splink API:', error);
+    if (onProgress) {
+      onProgress({
+        status: 'failed',
+        percentage: 0,
+        statusMessage: 'Splink processing failed',
+        error: error instanceof Error ? error.message : 'Unknown error in Splink processing',
+        debugInfo: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
     throw error;
   }
 };
