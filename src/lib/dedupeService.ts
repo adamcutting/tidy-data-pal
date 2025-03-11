@@ -292,136 +292,93 @@ export const deduplicateData = async (
   }
 };
 
-// Deduplication using Splink API - UPDATED to match Flask API structure
+// Update the deduplicateWithSplink function to use our new adapter
 export const deduplicateWithSplink = async (
   data: any[],
   mappedColumns: MappedColumn[],
   config: DedupeConfig,
-  onProgress?: (progress: DedupeProgress) => void
+  progressCallback?: (progress: DedupeProgress) => void
 ): Promise<DedupeResult> => {
-  // Get Splink API settings
-  const splinkSettings = getSplinkSettings();
-  
-  // Apply column mapping
-  const processedData = data.map(row => {
-    const newRow: Record<string, any> = {};
-    mappedColumns.forEach(col => {
-      if (col.include && col.mappedName) {
-        newRow[col.mappedName] = row[col.originalName];
-      }
-    });
-    return newRow;
-  });
-  
-  // Update progress
-  if (onProgress) {
-    onProgress({
-      status: 'processing',
-      percentage: 30,
-      statusMessage: 'Preparing Splink configuration...',
-      recordsProcessed: Math.floor(data.length * 0.3),
-      totalRecords: data.length
-    });
-  }
-  
-  // Get all columns that should be matched
-  const matchFields = config.comparisons.map(comp => comp.column);
-  
-  // Extract blocking fields from the config (simple blocking columns only)
-  const blockingFields = config.blockingColumns.filter(col => !col.includes(':'));
-  
-  // Determine unique ID column - use config setting or fall back to first column
-  const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || Object.keys(processedData[0])[0];
-  
-  // Prepare payload for simplified Splink API in the expected format
-  const payload = {
-    unique_id_column: uniqueIdColumn,
-    blocking_fields: blockingFields,
-    match_fields: matchFields,
-    input_data: processedData
-  };
-  
-  console.log('Sending payload to Splink API:', payload);
-  
   try {
     // Update progress
-    if (onProgress) {
-      onProgress({
+    if (progressCallback) {
+      progressCallback({
         status: 'processing',
-        percentage: 40,
-        statusMessage: 'Sending data to Splink API...',
-        recordsProcessed: Math.floor(data.length * 0.4),
-        totalRecords: data.length
+        percentage: 10,
+        statusMessage: 'Preparing data for Splink API...'
       });
     }
+
+    // Import our adapter functions
+    const { formatDataForSplinkApi, processSplinkResponse } = await import('./splinkAdapter');
     
-    console.log('Calling Splink API at:', splinkSettings.apiUrl);
-    const response = await fetch(splinkSettings.apiUrl, {
+    // Format the data for the Splink API
+    const formattedData = formatDataForSplinkApi(data, mappedColumns, config);
+    
+    // Update progress
+    if (progressCallback) {
+      progressCallback({
+        status: 'processing',
+        percentage: 30,
+        statusMessage: 'Sending data to Splink API...'
+      });
+    }
+
+    // Get the API URL from settings
+    const splinkSettings = getSplinkSettings();
+    const apiUrl = splinkSettings.apiUrl || 'http://localhost:5000/api/deduplicate';
+    
+    // Make the API request
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(splinkSettings.apiKey ? { 'X-API-Key': splinkSettings.apiKey } : {})
+        ...(splinkSettings.apiKey ? { 'Authorization': `Bearer ${splinkSettings.apiKey}` } : {})
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(formattedData)
     });
-    
+
+    // Update progress
+    if (progressCallback) {
+      progressCallback({
+        status: 'processing',
+        percentage: 70,
+        statusMessage: 'Processing results from Splink API...'
+      });
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Splink API error (${response.status}): ${errorText}`);
     }
-    
-    // Parse the response from the API
-    const result = await response.json();
+
+    const apiResponse = await response.json();
     
     // Update progress
-    if (onProgress) {
-      onProgress({
-        status: 'processing',
-        percentage: 90,
-        statusMessage: 'Processing Splink results...',
-        recordsProcessed: Math.floor(data.length * 0.9),
-        totalRecords: data.length
+    if (progressCallback) {
+      progressCallback({
+        status: 'completed',
+        percentage: 100,
+        statusMessage: 'Deduplication complete!'
+      });
+    }
+
+    // Process the response
+    return processSplinkResponse(apiResponse, data);
+  } catch (error) {
+    console.error('Error in deduplicateWithSplink:', error);
+    
+    // Update progress with error
+    if (progressCallback) {
+      progressCallback({
+        status: 'failed',
+        percentage: 0,
+        statusMessage: 'Deduplication failed',
+        error: error instanceof Error ? error.message : 'Unknown error during deduplication'
       });
     }
     
-    // Process the clusters from the API response
-    const clusters = result.clusters || [];
-    const clusterData = Array.isArray(result.cluster_data) ? result.cluster_data : [];
-    
-    // Create flagged data with cluster information
-    const flaggedData = processedData.map((row, index) => {
-      // Find the cluster this row belongs to (if any)
-      const clusterInfo = clusterData.find(c => c[uniqueIdColumn] === row[uniqueIdColumn]);
-      const isDuplicate = clusterInfo && clusterInfo.cluster_id !== null;
-      
-      return {
-        ...row,
-        __is_duplicate: isDuplicate ? 'Yes' : 'No',
-        __cluster_id: clusterInfo ? `cluster_${clusterInfo.cluster_id}` : 'unique',
-        __record_id: `record_${index}`
-      };
-    });
-    
-    // Determine stats
-    const uniqueRows = clusters.length;
-    const duplicateRows = data.length - uniqueRows;
-    
-    return {
-      originalRows: data.length,
-      uniqueRows: uniqueRows,
-      duplicateRows: duplicateRows,
-      clusters: clusters,
-      processedData: processedData.filter(row => {
-        // Keep only first record from each cluster
-        const clusterInfo = clusterData.find(c => c[uniqueIdColumn] === row[uniqueIdColumn]);
-        return !clusterInfo || clusterInfo.is_cluster_representative;
-      }),
-      flaggedData: flaggedData,
-      resultId: result.output_file || 'splink_result'
-    };
-  } catch (error) {
-    console.error('Error calling Splink API:', error);
-    throw new Error(`Failed to process data with Splink: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw error;
   }
 };
 
