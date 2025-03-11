@@ -1,5 +1,4 @@
 import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig, SplinkSettings, DedupeProgress } from './types';
-import { pollDedupeStatus } from './sqlService';
 
 // Default Splink settings
 const DEFAULT_SPLINK_SETTINGS: SplinkSettings = {
@@ -305,12 +304,12 @@ export const deduplicateData = async (
   }
 };
 
-// Update the polling function to use the new status check endpoint
+// Export our local implementation of pollDedupeStatus
 export const pollDedupeStatus = async (
   jobId: string, 
   onProgress: (progress: DedupeProgress) => void,
-  maxAttempts = 100,  // Increased max attempts for large jobs
-  interval = 3000     // Poll every 3 seconds
+  maxAttempts = 100,
+  interval = 3000
 ): Promise<void> => {
   if (!jobId) {
     console.warn('No job ID provided for status polling');
@@ -319,7 +318,6 @@ export const pollDedupeStatus = async (
 
   let attempts = 0;
   
-  // Get the Splink API URL from settings
   const splinkSettings = getSplinkSettings();
   const apiBaseUrl = splinkSettings.apiUrl || 'http://localhost:5000/api/deduplicate';
   
@@ -337,23 +335,18 @@ export const pollDedupeStatus = async (
       
       attempts++;
       
-      // Import the status checking function from splinkAdapter
       const { checkSplinkJobStatus } = await import('./splinkAdapter');
       
-      // Get the current status
       const progress = await checkSplinkJobStatus(jobId, apiBaseUrl, splinkSettings.apiKey);
       
-      // Update the progress
       onProgress(progress);
       
-      // Continue polling if not complete
       if (progress.status !== 'completed' && progress.status !== 'failed') {
         setTimeout(checkStatus, interval);
       }
     } catch (error) {
       console.error('Error checking deduplication status:', error);
       
-      // Continue polling even if there's an error
       if (attempts < maxAttempts) {
         setTimeout(checkStatus, interval);
       } else {
@@ -366,115 +359,7 @@ export const pollDedupeStatus = async (
     }
   };
   
-  // Start polling
   checkStatus();
-};
-
-// Update the deduplicateWithSplink function to use the improved job tracking
-export const deduplicateWithSplink = async (
-  data: any[],
-  mappedColumns: MappedColumn[],
-  config: DedupeConfig,
-  progressCallback?: (progress: DedupeProgress) => void
-): Promise<DedupeResult> => {
-  try {
-    // Update progress
-    if (progressCallback) {
-      progressCallback({
-        status: 'processing',
-        percentage: 10,
-        statusMessage: 'Preparing data for Splink API...'
-      });
-    }
-
-    // Import our adapter functions
-    const { formatDataForSplinkApi, processSplinkResponse } = await import('./splinkAdapter');
-    
-    // Format the data for the Splink API
-    const formattedData = formatDataForSplinkApi(data, mappedColumns, config);
-    
-    // Store the job ID for polling
-    const jobId = formattedData.job_id;
-    
-    // Update progress
-    if (progressCallback) {
-      progressCallback({
-        status: 'processing',
-        percentage: 30,
-        statusMessage: 'Sending data to Splink API...',
-        recordsProcessed: 0,
-        totalRecords: data.length
-      });
-    }
-
-    // Get the API URL from settings
-    const splinkSettings = getSplinkSettings();
-    const apiUrl = splinkSettings.apiUrl || 'http://localhost:5000/api/deduplicate';
-    
-    // Make the API request
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(splinkSettings.apiKey ? { 'Authorization': `Bearer ${splinkSettings.apiKey}` } : {})
-      },
-      body: JSON.stringify(formattedData)
-    });
-
-    // Update progress
-    if (progressCallback) {
-      progressCallback({
-        status: 'processing',
-        percentage: 70,
-        statusMessage: 'Processing results from Splink API...',
-        recordsProcessed: Math.floor(data.length * 0.7),
-        totalRecords: data.length
-      });
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Splink API error (${response.status}): ${errorText}`);
-    }
-
-    const apiResponse = await response.json();
-    
-    // Start the status polling if we have a job ID
-    if (jobId && progressCallback) {
-      pollDedupeStatus(jobId, progressCallback);
-    }
-    
-    // Update progress
-    if (progressCallback) {
-      progressCallback({
-        status: 'completed',
-        percentage: 100,
-        statusMessage: 'Deduplication complete!'
-      });
-    }
-
-    // Process the response
-    const result = processSplinkResponse(apiResponse, data);
-    
-    // Ensure the jobId is included in the result
-    result.jobId = jobId || result.jobId;
-    
-    return result;
-  } catch (error) {
-    console.error('Error in deduplicateWithSplink:', error);
-    
-    // Update progress with error
-    if (progressCallback) {
-      progressCallback({
-        status: 'failed',
-        percentage: 0,
-        statusMessage: 'Deduplication failed',
-        error: error instanceof Error ? error.message : 'Unknown error during deduplication'
-      });
-    }
-    
-    throw error;
-  }
 };
 
 // Enhanced local deduplication function with progress tracking
