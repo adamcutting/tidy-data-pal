@@ -56,6 +56,8 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
     }
 
     setLoadingMetadata(true);
+    setDatabaseMetadata(null); // Clear previous metadata while loading
+    
     try {
       let config: MySQLConfig | MSSQLConfig;
       
@@ -83,12 +85,31 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
         };
       }
 
-      const metadata = await getDatabaseMetadata(dbType, config);
-      setDatabaseMetadata(metadata);
+
+      console.log('Fetching database metadata with config:', 
+        { ...config, password: config.password ? '***HIDDEN***' : undefined });
       
-      // If tables are available, preselect the first one
-      if (metadata.tables.length > 0 && isTable) {
-        setQuery(metadata.tables[0]);
+      // Call the service to get real database metadata
+      const metadata = await getDatabaseMetadata(dbType, config);
+      console.log('Received metadata from server:', metadata);
+      
+      if (!metadata || (!metadata.tables.length && !metadata.views.length)) {
+        toast.warning('No tables or views found in the database');
+      } else {
+        setDatabaseMetadata(metadata);
+        
+        // Set initial table selection if available
+        if (metadata.tables.length > 0) {
+          setQuery(metadata.tables[0]);
+          setSelectedObjectType('table');
+        } else if (metadata.views.length > 0) {
+          setQuery(metadata.views[0]);
+          setSelectedObjectType('view');
+        }
+        
+        // Show success message with count of found objects
+        toast.success(`Found ${metadata.tables.length} tables and ${metadata.views.length} views`);
+
       }
     } catch (error) {
       console.error('Error fetching database metadata:', error);

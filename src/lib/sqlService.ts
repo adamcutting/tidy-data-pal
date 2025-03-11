@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+=======
+
+import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
+import { toast } from 'sonner';
+import * as mssql from 'mssql';
+>>>>>>> 75491e2cd26e92928f294bd611bb775b6755452f
 
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 
@@ -9,17 +16,51 @@ export const getDatabaseMetadata = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig
 ): Promise<DatabaseMetadata> => {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Generate mock tables and views based on database type
-  const tables = ['customers', 'orders', 'products', 'suppliers', 'employees'];
-  const views = ['vw_customer_orders', 'vw_product_inventory', 'vw_sales_summary'];
-  
-  return {
-    tables,
-    views
-  };
+  console.log(`Fetching metadata for ${dbType} database:`, 
+    { ...config, password: config.password ? '***HIDDEN***' : undefined });
+
+  if (dbType === 'mssql') {
+    try {
+      // Create a connection to SQL Server
+      const pool = await createMSSQLPool(config as MSSQLConfig);
+      
+      console.log("Connected to SQL Server, now fetching tables and views...");
+      
+      // Query to get all user tables
+      const tablesResult = await pool.request().query(`
+        SELECT TABLE_NAME
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo'
+        ORDER BY TABLE_NAME
+      `);
+      
+      // Query to get all views
+      const viewsResult = await pool.request().query(`
+        SELECT TABLE_NAME
+        FROM INFORMATION_SCHEMA.VIEWS
+        WHERE TABLE_SCHEMA = 'dbo'
+        ORDER BY TABLE_NAME
+      `);
+      
+      // Process results
+      const tables = tablesResult.recordset.map((row: any) => row.TABLE_NAME);
+      const views = viewsResult.recordset.map((row: any) => row.TABLE_NAME);
+      
+      console.log("Fetched tables:", tables);
+      console.log("Fetched views:", views);
+      
+      // Close the connection pool
+      await pool.close();
+      
+      return { tables, views };
+    } catch (error) {
+      console.error('Error fetching SQL Server metadata:', error);
+      throw new Error(`Failed to fetch database metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  } else {
+    // MySQL implementation
+    throw new Error('MySQL connection is not implemented in this version');
+  }
 };
 
 // Mock function to load data from a database
@@ -30,9 +71,16 @@ export const loadDatabaseData = async (
   isTable: boolean,
   onProgressUpdate: (progress: DedupeProgress) => void
 ): Promise<any[]> => {
+<<<<<<< HEAD
   // In a real implementation, this would make an API call to a backend service
   // For now, we'll simulate the process with a delay
 
+=======
+  console.log(`Loading data from ${dbType} database:`, 
+    { ...config, password: config.password ? '***HIDDEN***' : undefined });
+  console.log(`Query/Table: ${query}, isTable: ${isTable}`);
+  
+>>>>>>> 75491e2cd26e92928f294bd611bb775b6755452f
   // Set initial progress state
   onProgressUpdate({
     status: 'connecting',
@@ -107,7 +155,7 @@ const generateMockData = (tableOrQuery: string, count: number): any[] => {
   return data;
 };
 
-// Polling function to check dedupe status
+// Remove the mock data polling function and replace with real implementation
 export const pollDedupeStatus = async (
   jobId: string, 
   onProgressUpdate: (progress: DedupeProgress) => void
