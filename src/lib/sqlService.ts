@@ -1,9 +1,38 @@
-
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 import { toast } from 'sonner';
+import * as mssql from 'mssql';
+import * as mysql from 'mysql2/promise';
 
 // Mock polling interval in ms (in a real implementation this would call an actual backend API)
 const POLLING_INTERVAL = 1500;
+
+// Function to create a connection pool for SQL Server
+const createMSSQLPool = async (config: MSSQLConfig) => {
+  const { server, port, user, password, database, options } = config;
+  
+  const poolConfig = {
+    server,
+    port,
+    user,
+    password,
+    database,
+    options: {
+      encrypt: options?.encrypt ?? true,
+      trustServerCertificate: options?.trustServerCertificate ?? false,
+      ...options
+    },
+    pool: {
+      max: 10,
+      min: 0,
+      idleTimeoutMillis: 30000
+    }
+  };
+
+  console.log('Creating MSSQL connection pool with config:', 
+    { ...poolConfig, password: password ? '***HIDDEN***' : undefined });
+  
+  return await new mssql.ConnectionPool(poolConfig).connect();
+};
 
 // Function to get database metadata (tables and views)
 export const getDatabaseMetadata = async (
@@ -15,18 +44,36 @@ export const getDatabaseMetadata = async (
 
   if (dbType === 'mssql') {
     try {
-      // Mock MSSQL metadata fetch
-      console.log("Simulating connection to SQL Server and fetching tables and views...");
+      // Create a connection to SQL Server
+      const pool = await createMSSQLPool(config as MSSQLConfig);
       
-      // Wait for a bit to simulate network request
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log("Connected to SQL Server, now fetching tables and views...");
       
-      // Return mock data
-      const tables = ['Customers', 'Orders', 'Products', 'Suppliers', 'Categories', 'Employees'];
-      const views = ['CustomerOrders', 'ProductInventory', 'SalesReport'];
+      // Query to get all user tables
+      const tablesResult = await pool.request().query(`
+        SELECT TABLE_NAME
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo'
+        ORDER BY TABLE_NAME
+      `);
+      
+      // Query to get all views
+      const viewsResult = await pool.request().query(`
+        SELECT TABLE_NAME
+        FROM INFORMATION_SCHEMA.VIEWS
+        WHERE TABLE_SCHEMA = 'dbo'
+        ORDER BY TABLE_NAME
+      `);
+      
+      // Process results
+      const tables = tablesResult.recordset.map((row: any) => row.TABLE_NAME);
+      const views = viewsResult.recordset.map((row: any) => row.TABLE_NAME);
       
       console.log("Fetched tables:", tables);
       console.log("Fetched views:", views);
+      
+      // Close the connection pool
+      await pool.close();
       
       return { tables, views };
     } catch (error) {
@@ -35,18 +82,46 @@ export const getDatabaseMetadata = async (
     }
   } else if (dbType === 'mysql') {
     try {
-      // Mock MySQL metadata fetch
-      console.log("Simulating connection to MySQL and fetching tables and views...");
+      const { host, port, user, password, database } = config as MySQLConfig;
       
-      // Wait for a bit to simulate network request
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log("Connecting to MySQL...");
       
-      // Return mock data for MySQL
-      const tables = ['users', 'orders', 'products', 'categories', 'payments', 'inventory'];
-      const views = ['active_users', 'order_summary', 'product_stock'];
+      // Create MySQL connection
+      const connection = await mysql.createConnection({
+        host,
+        port,
+        user,
+        password,
+        database
+      });
+      
+      console.log("Connected to MySQL, now fetching tables and views...");
+      
+      // Query to get tables
+      const [tablesRows] = await connection.execute(`
+        SELECT TABLE_NAME 
+        FROM INFORMATION_SCHEMA.TABLES 
+        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
+        ORDER BY TABLE_NAME
+      `, [database]);
+      
+      // Query to get views
+      const [viewsRows] = await connection.execute(`
+        SELECT TABLE_NAME 
+        FROM INFORMATION_SCHEMA.VIEWS 
+        WHERE TABLE_SCHEMA = ?
+        ORDER BY TABLE_NAME
+      `, [database]);
+      
+      // Process results
+      const tables = (tablesRows as any[]).map(row => row.TABLE_NAME);
+      const views = (viewsRows as any[]).map(row => row.TABLE_NAME);
       
       console.log("Fetched MySQL tables:", tables);
       console.log("Fetched MySQL views:", views);
+      
+      // Close the connection
+      await connection.end();
       
       return { tables, views };
     } catch (error) {
@@ -77,71 +152,85 @@ export const loadDatabaseData = async (
     statusMessage: `Connecting to ${dbType} database...`,
   });
 
-  // Simulate connection delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  // Update progress to loading
-  onProgressUpdate({
-    status: 'loading',
-    percentage: 30,
-    statusMessage: isTable ? 
-      `Loading data from table "${query}"...` : 
-      'Executing query and loading results...',
-  });
-
-  // Simulate data loading delay
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
-  // Generate mock data based on the database type and config
-  const mockData = generateMockData(query, 1000);
-
-  // Final progress update
-  onProgressUpdate({
-    status: 'completed',
-    percentage: 100,
-    statusMessage: `Successfully loaded ${mockData.length} records from database.`,
-    recordsProcessed: mockData.length,
-    totalRecords: mockData.length
-  });
-
-  return mockData;
-};
-
-// Function to generate mock data for demonstration
-const generateMockData = (tableOrQuery: string, count: number): any[] => {
-  const data = [];
-  
-  // Generate column names based on the 'table name'
-  const columns = ['id', 'company_name', 'address_line_1', 'address_line_2', 'city', 'state', 'postcode', 'phone'];
-
-  // Generate mock data rows
-  for (let i = 0; i < count; i++) {
-    const row: Record<string, any> = {};
+  try {
+    let data: any[] = [];
     
-    // Add an ID
-    row['id'] = i + 1;
-    
-    // Add company name (with some duplicates for testing)
-    if (i % 10 === 0 && i > 0) {
-      // Create near-duplicate with slight variation
-      const prevIndex = i - (i % 5 === 0 ? 5 : 1);
-      row['company_name'] = data[prevIndex]['company_name'] + (i % 3 === 0 ? ' Ltd' : '');
-    } else {
-      row['company_name'] = `Company ${i + 1}`;
+    if (dbType === 'mssql') {
+      // MSSQL Implementation
+      const pool = await createMSSQLPool(config as MSSQLConfig);
+      
+      onProgressUpdate({
+        status: 'loading',
+        percentage: 30,
+        statusMessage: isTable ? 
+          `Loading data from table "${query}"...` : 
+          'Executing query and loading results...',
+      });
+      
+      // Execute query or select from table
+      const sqlQuery = isTable ? `SELECT * FROM [${query}]` : query;
+      const result = await pool.request().query(sqlQuery);
+      
+      // Get result data
+      data = result.recordset;
+      
+      // Close the connection pool
+      await pool.close();
+    } 
+    else if (dbType === 'mysql') {
+      // MySQL Implementation
+      const { host, port, user, password, database } = config as MySQLConfig;
+      
+      // Create MySQL connection
+      const connection = await mysql.createConnection({
+        host,
+        port,
+        user,
+        password,
+        database
+      });
+      
+      onProgressUpdate({
+        status: 'loading',
+        percentage: 30,
+        statusMessage: isTable ? 
+          `Loading data from table "${query}"...` : 
+          'Executing query and loading results...',
+      });
+      
+      // Execute query or select from table
+      const sqlQuery = isTable ? `SELECT * FROM \`${query}\`` : query;
+      const [rows] = await connection.execute(sqlQuery);
+      
+      // Get result data
+      data = rows as any[];
+      
+      // Close the connection
+      await connection.end();
     }
     
-    // Add address fields
-    row['address_line_1'] = `${i + 100} Main Street`;
-    row['address_line_2'] = i % 3 === 0 ? `Suite ${i % 10 + 1}` : '';
-    row['city'] = i % 5 === 0 ? 'London' : i % 5 === 1 ? 'Manchester' : i % 5 === 2 ? 'Birmingham' : i % 5 === 3 ? 'Edinburgh' : 'Glasgow';
-    row['state'] = '';
-    row['postcode'] = `${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + ((i + 1) % 26))}${i % 10}${i % 10} ${i % 10}${String.fromCharCode(65 + ((i + 2) % 26))}${String.fromCharCode(65 + ((i + 3) % 26))}`;
-    row['phone'] = `+44 ${Math.floor(Math.random() * 1000).toString().padStart(3, '0')} ${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`;
+    // Final progress update
+    onProgressUpdate({
+      status: 'completed',
+      percentage: 100,
+      statusMessage: `Successfully loaded ${data.length} records from database.`,
+      recordsProcessed: data.length,
+      totalRecords: data.length
+    });
     
-    data.push(row);
+    return data;
+  } catch (error) {
+    console.error('Error loading database data:', error);
+    
+    onProgressUpdate({
+      status: 'failed',
+      percentage: 0,
+      statusMessage: `Failed to load data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    
+    throw error;
   }
-  
-  return data;
 };
 
 // Remove the mock data polling function and replace with real implementation
