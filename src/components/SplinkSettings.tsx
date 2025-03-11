@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,15 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Settings, Check, AlertTriangle, Server } from 'lucide-react';
 import { getSplinkSettings, saveSplinkSettings, testSplinkConnection } from '@/lib/dedupeService';
-import { SplinkSettings as SplinkSettingsType } from '@/lib/types';
+import { SplinkSettings as SplinkSettingsType, DedupeConfig } from '@/lib/types';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
+import { UseFormReturn } from 'react-hook-form';
 
 interface SplinkSettingsProps {
+  form?: UseFormReturn<DedupeConfig, any, undefined>;
   onSettingsChange?: () => void;
 }
 
-const SplinkSettings: React.FC<SplinkSettingsProps> = ({ onSettingsChange }) => {
+const SplinkSettings: React.FC<SplinkSettingsProps> = ({ form, onSettingsChange }) => {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<SplinkSettingsType>(getSplinkSettings());
   const [isTesting, setIsTesting] = useState(false);
