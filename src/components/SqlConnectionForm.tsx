@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,12 +27,8 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
   const [isTable, setIsTable] = useState<boolean>(true);
   const [encrypt, setEncrypt] = useState<boolean>(true);
   const [trustServerCert, setTrustServerCert] = useState<boolean>(true);
-  
-  // New states for Windows Authentication
   const [authType, setAuthType] = useState<'default' | 'windows'>('default');
   const [domain, setDomain] = useState<string>('');
-  
-  // New states for table/view selection
   const [loadingMetadata, setLoadingMetadata] = useState<boolean>(false);
   const [databaseMetadata, setDatabaseMetadata] = useState<DatabaseMetadata | null>(null);
   const [selectedObjectType, setSelectedObjectType] = useState<'table' | 'view'>('table');
@@ -42,13 +37,11 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
     const newType = value as DatabaseType;
     setDbType(newType);
     setPort(newType === 'mssql' ? '1433' : '3306');
-    // Reset auth type for MySQL as it doesn't support Windows Auth
     if (newType === 'mysql') {
       setAuthType('default');
     }
   };
 
-  // Function to fetch database metadata (tables and views)
   const fetchDatabaseMetadata = async () => {
     if (!server || !database) {
       toast.error('Please enter server and database name first');
@@ -77,7 +70,7 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
           options: {
             encrypt,
             trustServerCertificate: trustServerCert,
-            authentication: authType === 'windows' ? 'ntlm' : 'default',
+            authentication: authType === 'windows' ? 'windows' : 'default',
             domain: authType === 'windows' ? domain : undefined
           }
         };
@@ -86,7 +79,6 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
       const metadata = await getDatabaseMetadata(dbType, config);
       setDatabaseMetadata(metadata);
       
-      // If tables are available, preselect the first one
       if (metadata.tables.length > 0 && isTable) {
         setQuery(metadata.tables[0]);
       }
@@ -104,7 +96,6 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
       return;
     }
 
-    // For default authentication, username is required
     if (authType === 'default' && !username) {
       toast.error('Please provide a username for SQL authentication');
       return;
@@ -131,7 +122,7 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
           options: {
             encrypt,
             trustServerCertificate: trustServerCert,
-            authentication: authType === 'windows' ? 'ntlm' : 'default',
+            authentication: authType === 'windows' ? 'windows' : 'default',
             domain: authType === 'windows' ? domain : undefined
           }
         };
@@ -144,7 +135,6 @@ const SqlConnectionForm: React.FC<SqlConnectionFormProps> = ({ onConnect, isConn
     }
   };
 
-  // Effect to reset table selection when switching between table and query mode
   useEffect(() => {
     if (isTable && databaseMetadata) {
       if (selectedObjectType === 'table' && databaseMetadata.tables.length > 0) {
