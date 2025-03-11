@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
@@ -108,23 +107,29 @@ const Index = () => {
       
       toast.info('Starting deduplication process...');
       
-      // Generate a job ID
       const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
-      // Create a new Worker
+      const startTime = Date.now();
+      
       const worker = new Worker(new URL('@/lib/dataProcessingWorker.ts', import.meta.url), { type: 'module' });
       
-      // Listen for messages from the worker
       worker.onmessage = (event) => {
         const { type, data } = event.data;
         
         if (type === 'progress') {
           setProgress(data);
         } else if (type === 'result') {
-          setDedupeResult(data);
+          const processingTimeMs = Date.now() - startTime;
+          
+          const resultWithTime = {
+            ...data,
+            processingTimeMs
+          };
+          
+          setDedupeResult(resultWithTime);
           markStepCompleted('progress');
           goToNextStep('results');
-          worker.terminate(); // Clean up the worker
+          worker.terminate();
           setIsProcessing(false);
           toast.success(`Deduplication complete! Found ${data.duplicateRows} duplicate records.`);
         } else if (type === 'error') {
@@ -135,15 +140,17 @@ const Index = () => {
             statusMessage: 'Deduplication process failed',
             error: data
           });
-          worker.terminate(); // Clean up the worker
+          worker.terminate();
           setIsProcessing(false);
           toast.error(`Error during deduplication process: ${data}`);
         } else if (type === 'splink-job') {
-          // Poll status for Splink job
           if (data.jobId) {
+            const initialProcessingTime = Date.now() - startTime;
+            
             const tempResult = {
               ...data,
-              jobId: data.jobId
+              jobId: data.jobId,
+              processingTimeMs: initialProcessingTime
             };
             setDedupeResult(tempResult);
             
@@ -151,17 +158,23 @@ const Index = () => {
               setProgress(progressUpdate);
               
               if (progressUpdate.status === 'completed') {
+                const totalProcessingTime = Date.now() - startTime;
+                setDedupeResult(prev => prev ? {
+                  ...prev,
+                  processingTimeMs: totalProcessingTime
+                } : null);
+                
                 markStepCompleted('progress');
                 goToNextStep('results');
-                worker.terminate(); // Clean up the worker
+                worker.terminate();
                 setIsProcessing(false);
                 toast.success(`Deduplication complete! Check results tab for details.`);
               } else if (progressUpdate.status === 'failed') {
-                worker.terminate(); // Clean up the worker
+                worker.terminate();
                 setIsProcessing(false);
                 toast.error(`Deduplication failed: ${progressUpdate.error || 'Unknown error'}`);
               } else if (progressUpdate.status === 'cancelled') {
-                worker.terminate(); // Clean up the worker
+                worker.terminate();
                 setIsProcessing(false);
                 toast.info(`Deduplication job was cancelled.`);
               }
@@ -170,7 +183,6 @@ const Index = () => {
         }
       };
       
-      // Handle worker errors
       worker.onerror = (error) => {
         console.error('Worker error:', error);
         setProgress({
@@ -179,19 +191,19 @@ const Index = () => {
           statusMessage: 'Deduplication process failed',
           error: error.message
         });
-        worker.terminate(); // Clean up the worker
+        worker.terminate();
         setIsProcessing(false);
         toast.error(`Error during deduplication process: ${error.message}`);
       };
       
-      // Start the deduplication process in the worker
       worker.postMessage({
         type: 'deduplicate',
         data: {
           fileData: fileData.data,
           mappedColumns,
           config: fullConfig,
-          jobId
+          jobId,
+          optimizePostcodeProcessing: true
         }
       });
     }

@@ -46,6 +46,11 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
     ? (result.processingTimeMs / 1000).toFixed(2) 
     : 'N/A';
 
+  // Calculate records per second
+  const recordsPerSecond = result.processingTimeMs && result.processingTimeMs > 0
+    ? Math.round(result.originalRows / (result.processingTimeMs / 1000))
+    : 0;
+
   return (
     <div className="w-full max-w-3xl mx-auto animate-fade-in">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -82,7 +87,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
           <h3 className="text-2xl font-bold">{formattedProcessingTime}s</h3>
           <p className="text-muted-foreground">Processing Time</p>
           <p className="text-xs text-muted-foreground mt-2">
-            {(result.originalRows / (result.processingTimeMs || 1) * 1000).toFixed(0)} records/sec
+            {recordsPerSecond > 0 ? `${recordsPerSecond.toLocaleString()} records/sec` : ''}
           </p>
         </div>
       </div>
@@ -121,6 +126,12 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
                 <span className="text-muted-foreground">Processing time:</span>
                 <span>{formattedProcessingTime} seconds</span>
               </li>
+              {recordsPerSecond > 0 && (
+                <li className="flex justify-between">
+                  <span className="text-muted-foreground">Processing speed:</span>
+                  <span>{recordsPerSecond.toLocaleString()} records/second</span>
+                </li>
+              )}
             </ul>
           </div>
           

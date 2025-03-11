@@ -71,6 +71,77 @@ export const normalizeString = (str: string): string => {
   return normalized;
 };
 
+// Optimized postcode processing functions
+// Create a cache for postcode processing to avoid redundant calculations
+const postcodeCache = new Map<string, string>();
+
+// Extract postcode sector efficiently (e.g., "AB12 3" from "AB12 3CD")
+export const extractPostcodeSector = (postcode: string): string => {
+  if (!postcode) return '';
+  
+  // Check cache first
+  const cacheKey = `sector_${postcode}`;
+  if (postcodeCache.has(cacheKey)) {
+    return postcodeCache.get(cacheKey) || '';
+  }
+  
+  // Normalize and clean the postcode
+  const cleanPostcode = postcode.trim().toUpperCase().replace(/\s+/g, ' ');
+  
+  // Fast extraction using substring operations instead of regex
+  const parts = cleanPostcode.split(' ');
+  let sector = '';
+  
+  if (parts.length === 2 && parts[1].length >= 1) {
+    // Take the outward code and first digit of the inward code
+    sector = `${parts[0]} ${parts[1][0]}`;
+  } else if (cleanPostcode.length >= 4) {
+    // If no space, try to split at appropriate position
+    const outwardEnd = cleanPostcode.length - 3;
+    const possibleSector = `${cleanPostcode.substring(0, outwardEnd)} ${cleanPostcode.charAt(outwardEnd)}`;
+    sector = possibleSector;
+  } else {
+    sector = cleanPostcode; // Can't determine sector, use full postcode
+  }
+  
+  // Cache the result
+  postcodeCache.set(cacheKey, sector);
+  return sector;
+};
+
+// Extract postcode district efficiently (e.g., "AB12" from "AB12 3CD")
+export const extractPostcodeDistrict = (postcode: string): string => {
+  if (!postcode) return '';
+  
+  // Check cache first
+  const cacheKey = `district_${postcode}`;
+  if (postcodeCache.has(cacheKey)) {
+    return postcodeCache.get(cacheKey) || '';
+  }
+  
+  // Normalize and clean the postcode
+  const cleanPostcode = postcode.trim().toUpperCase().replace(/\s+/g, ' ');
+  
+  // Fast extraction using substring operations
+  const parts = cleanPostcode.split(' ');
+  let district = '';
+  
+  if (parts.length >= 1) {
+    // The outward code is the district
+    district = parts[0];
+  } else if (cleanPostcode.length >= 3) {
+    // If no space, try to extract the outward code
+    const outwardEnd = Math.max(cleanPostcode.length - 3, Math.floor(cleanPostcode.length / 2));
+    district = cleanPostcode.substring(0, outwardEnd);
+  } else {
+    district = cleanPostcode; // Can't determine district, use full postcode
+  }
+  
+  // Cache the result
+  postcodeCache.set(cacheKey, district);
+  return district;
+};
+
 // Parse CSV data
 export const parseCSV = (csvData: string): any[] => {
   const lines = csvData.split('\n');
@@ -175,8 +246,50 @@ const generateId = (): string => {
 const preprocessDataForComparison = (
   data: any[],
   mappedColumns: MappedColumn[],
-  config: DedupeConfig
+  config: DedupeConfig,
+  optimizePostcodeProcessing: boolean = false
 ): any[] => {
+  // If postcode optimization is enabled, pre-process all postcodes in bulk first
+  if (optimizePostcodeProcessing) {
+    // Clear the cache before processing
+    postcodeCache.clear();
+    
+    // Find all postcode columns used in blocking or comparison
+    const postcodeColumns = new Set<string>();
+    
+    // Check for postcode columns in blocking rules
+    for (const blockingColumn of config.blockingColumns) {
+      if (blockingColumn.toLowerCase().includes('postcode')) {
+        postcodeColumns.add(blockingColumn);
+      }
+    }
+    
+    // Check for postcode columns in comparison rules
+    for (const comparison of config.comparisons) {
+      if (comparison.column.toLowerCase().includes('postcode')) {
+        postcodeColumns.add(comparison.column);
+      }
+    }
+    
+    // Pre-populate the cache for all postcodes
+    if (postcodeColumns.size > 0) {
+      console.time('Postcode bulk preprocessing');
+      
+      for (const row of data) {
+        for (const column of postcodeColumns) {
+          const postcode = row[column];
+          if (postcode) {
+            // Pre-calculate and cache sector and district
+            extractPostcodeSector(postcode);
+            extractPostcodeDistrict(postcode);
+          }
+        }
+      }
+      
+      console.timeEnd('Postcode bulk preprocessing');
+    }
+  }
+  
   return data.map(row => {
     const processedRow = { ...row };
     
@@ -201,9 +314,11 @@ export const deduplicateData = async (
   data: any[],
   mappedColumns: MappedColumn[],
   config: DedupeConfig,
-  onProgress?: (progress: DedupeProgress) => void
+  onProgress?: (progress: DedupeProgress) => void,
+  optimizePostcodeProcessing: boolean = true
 ): Promise<DedupeResult> => {
   console.log('Deduplicating with config:', config);
+  console.log('Postcode optimization enabled:', optimizePostcodeProcessing);
   
   // Update progress if callback provided
   if (onProgress) {
@@ -252,8 +367,8 @@ export const deduplicateData = async (
           throw new Error('Splink API is not available');
         }
         
-        // If API is available, use Splink
-        result = await deduplicateWithSplink(data, mappedColumns, config, onProgress);
+        // If API is available, use Splink with postcode optimization
+        result = await deduplicateWithSplink(data, mappedColumns, config, onProgress, optimizePostcodeProcessing);
       } catch (error) {
         console.warn('Failed to use Splink, falling back to local implementation:', error);
         if (onProgress) {
@@ -266,11 +381,11 @@ export const deduplicateData = async (
           });
         }
         // Fall back to local implementation if Splink fails
-        result = await deduplicateLocally(data, mappedColumns, config, onProgress);
+        result = await deduplicateLocally(data, mappedColumns, config, onProgress, optimizePostcodeProcessing);
       }
     } else {
       // Use local implementation as requested
-      result = await deduplicateLocally(data, mappedColumns, config, onProgress);
+      result = await deduplicateLocally(data, mappedColumns, config, onProgress, optimizePostcodeProcessing);
     }
     
     // Add job ID to result for progress tracking
@@ -310,7 +425,8 @@ export const deduplicateWithSplink = async (
   data: any[],
   mappedColumns: MappedColumn[],
   config: DedupeConfig,
-  onProgress?: (progress: DedupeProgress) => void
+  onProgress?: (progress: DedupeProgress) => void,
+  optimizePostcodeProcessing: boolean = true
 ): Promise<DedupeResult> => {
   // Get Splink settings from localStorage or use defaults
   const splinkSettings = getSplinkSettings();
@@ -476,9 +592,11 @@ export const deduplicateLocally = async (
   data: any[],
   mappedColumns: MappedColumn[],
   config: DedupeConfig,
-  onProgress?: (progress: DedupeProgress) => void
+  onProgress?: (progress: DedupeProgress) => void,
+  optimizePostcodeProcessing: boolean = true
 ): Promise<DedupeResult> => {
   console.log('Deduplicating locally with config:', config);
+  console.log('Optimizing postcode processing:', optimizePostcodeProcessing);
   
   // Apply column mapping
   if (onProgress) {
@@ -512,7 +630,12 @@ export const deduplicateLocally = async (
     });
   }
   
-  const normalizedData = preprocessDataForComparison(processedData, mappedColumns, config);
+  const normalizedData = preprocessDataForComparison(
+    processedData, 
+    mappedColumns, 
+    config, 
+    optimizePostcodeProcessing
+  );
   
   // Apply blocking rules
   if (onProgress) {
