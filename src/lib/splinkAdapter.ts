@@ -13,7 +13,6 @@ export const formatDataForSplinkApi = (
   match_fields: { field: string; type: string }[];
   input_data: any[];
   output_dir?: string;
-  job_id?: string; // Add job_id for tracking
 } => {
   // Get columns that are included in the deduplication
   const includedColumns = mappedColumns
@@ -99,25 +98,40 @@ export const checkSplinkJobStatus = async (
 
     const statusData = await response.json();
     
-    // Convert the backend status to our DedupeProgress format
+    // Map backend status to our DedupeProgress format
+    let status: DedupeProgress['status'];
+    switch (statusData.status) {
+      case 'completed':
+        status = 'completed';
+        break;
+      case 'failed':
+        status = 'failed';
+        break;
+      case 'clustering':
+        status = 'clustering';
+        break;
+      case 'estimating_u':
+      case 'predicting':
+      default:
+        status = 'processing';
+    }
+
     return {
-      status: statusData.status === 'completed' ? 'completed' 
-        : statusData.status === 'failed' ? 'failed' 
-        : statusData.status === 'clustering' ? 'clustering'
-        : 'processing',
-      percentage: statusData.progress_percentage || 0,
-      statusMessage: statusData.message || 'Processing...',
+      status,
+      percentage: statusData.progress || 0,
+      statusMessage: getStatusMessage(statusData.status, statusData.progress),
       recordsProcessed: statusData.records_processed,
       totalRecords: statusData.total_records,
-      estimatedTimeRemaining: statusData.estimated_time_remaining,
+      estimatedTimeRemaining: formatTime(statusData.estimated_time_remaining),
       error: statusData.error
     };
   } catch (error) {
     console.error('Error checking job status:', error);
     return {
-      status: 'processing',
-      percentage: 50, // Default to 50% when status check fails
-      statusMessage: 'Processing in progress. Status update unavailable.',
+      status: 'failed',
+      percentage: 0,
+      statusMessage: 'Failed to check job status',
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 };
@@ -129,80 +143,118 @@ export const processSplinkResponse = (
   apiResponse: any,
   originalData: any[]
 ): DedupeResult => {
-  // If the API returned a proper response
-  if (apiResponse && apiResponse.message === "Deduplication successful") {
-    // Extract the cluster data from the response
-    const clusterData = apiResponse.cluster_data || [];
-    const statistics = apiResponse.statistics || {};
-    
-    console.log("Received cluster data:", clusterData.length, "records");
-    console.log("Statistics:", statistics);
-    
-    // Calculate unique and duplicate rows
-    const originalRows = originalData.length;
-    const uniqueRows = statistics.num_clusters || originalData.length;
-    const duplicateRows = originalRows - uniqueRows;
-    
-    // Group records by cluster_id to form clusters
-    const clusterMap = new Map<string | number, any[]>();
-    clusterData.forEach((record: any) => {
-      const clusterId = record.cluster_id;
-      if (!clusterMap.has(clusterId)) {
-        clusterMap.set(clusterId, []);
-      }
-      clusterMap.get(clusterId)?.push(record);
-    });
-    
-    // Convert Map to array of clusters
-    const clusters = Array.from(clusterMap.values());
-    
-    // Use the cluster data directly for processedData
-    const processedData = clusterData;
-    
-    // Create flagged data by adding a is_duplicate flag to each record
-    // based on whether it belongs to a cluster with size > 1
-    const flaggedData = originalData.map(row => {
-      let isDuplicate = false;
-      let clusterId = null;
-      
-      // Try to find this record in the cluster data
-      for (const [id, cluster] of clusterMap.entries()) {
-        if (cluster.length > 1 && 
-            cluster.some((clusterRow: any) => {
-              // Check if this cluster record matches the original row
-              // based on a few key fields (this logic may need adjustment)
-              const keyFields = Object.keys(row).slice(0, 3); // Use first 3 fields as sample
-              return keyFields.every(key => 
-                clusterRow[key] !== undefined && 
-                row[key] !== undefined &&
-                String(clusterRow[key]) === String(row[key])
-              );
-            })) {
-          isDuplicate = true;
-          clusterId = id;
-          break;
-        }
-      }
-      
-      return { 
-        ...row, 
-        is_duplicate: isDuplicate ? 'Yes' : 'No',
-        cluster_id: clusterId || 'unique' 
-      };
-    });
-    
+  // If we have a job ID, this is the initial response
+  if (apiResponse.job_id) {
     return {
-      originalRows,
-      uniqueRows,
-      duplicateRows,
-      clusters,
-      processedData,
-      flaggedData,
-      resultId: new Date().getTime().toString(),
-      jobId: apiResponse.job_id || apiResponse.output_path || new Date().getTime().toString()
+      originalRows: originalData.length,
+      uniqueRows: originalData.length, // Will be updated when processing completes
+      duplicateRows: 0, // Will be updated when processing completes
+      clusters: [],
+      processedData: [],
+      flaggedData: [],
+      jobId: apiResponse.job_id
     };
   }
   
-  // If there was an error
-  throw new Error(apiResponse.error || 'Failed to process data with Splink API');
+  // If we have result data, this is the completed response
+  if (apiResponse.result) {
+    const { cluster_data, statistics } = apiResponse.result;
+    
+    return {
+      originalRows: statistics.total_records,
+      uniqueRows: statistics.num_clusters,
+      duplicateRows: statistics.total_records - statistics.num_clusters,
+      clusters: groupDataIntoClusters(cluster_data),
+      processedData: cluster_data,
+      flaggedData: createFlaggedData(originalData, cluster_data),
+      resultId: new Date().getTime().toString(),
+      jobId: apiResponse.job_id
+    };
+  }
+  
+  throw new Error('Invalid API response format');
 };
+
+// Helper functions
+function getStatusMessage(status: string, progress: number): string {
+  switch (status) {
+    case 'estimating_u':
+      return 'Estimating initial parameters...';
+    case 'predicting':
+      return 'Predicting potential matches...';
+    case 'clustering':
+      return 'Clustering similar records...';
+    case 'completed':
+      return 'Processing complete';
+    case 'failed':
+      return 'Processing failed';
+    default:
+      return `Processing... ${progress}% complete`;
+  }
+}
+
+function formatTime(seconds: number | null): string | undefined {
+  if (!seconds) return undefined;
+  
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function groupDataIntoClusters(clusterData: any[]): any[] {
+  const clusterMap = new Map<string | number, any[]>();
+  
+  clusterData.forEach((record: any) => {
+    const clusterId = record.cluster_id;
+    if (!clusterMap.has(clusterId)) {
+      clusterMap.set(clusterId, []);
+    }
+    clusterMap.get(clusterId)?.push(record);
+  });
+  
+  return Array.from(clusterMap.values());
+}
+
+function createFlaggedData(originalData: any[], clusterData: any[]): any[] {
+  const clusterMap = new Map<string | number, any[]>();
+  
+  // First, group cluster data by cluster ID
+  clusterData.forEach((record: any) => {
+    const clusterId = record.cluster_id;
+    if (!clusterMap.has(clusterId)) {
+      clusterMap.set(clusterId, []);
+    }
+    clusterMap.get(clusterId)?.push(record);
+  });
+  
+  // Then flag original data based on cluster membership
+  return originalData.map(row => {
+    let isDuplicate = false;
+    let clusterId = null;
+    
+    for (const [id, cluster] of clusterMap.entries()) {
+      if (cluster.length > 1 && findMatchingRecord(row, cluster)) {
+        isDuplicate = true;
+        clusterId = id;
+        break;
+      }
+    }
+    
+    return {
+      ...row,
+      is_duplicate: isDuplicate ? 'Yes' : 'No',
+      cluster_id: clusterId || 'unique'
+    };
+  });
+}
+
+function findMatchingRecord(originalRow: any, cluster: any[]): boolean {
+  const keyFields = Object.keys(originalRow).slice(0, 3); // Use first 3 fields as sample
+  return cluster.some(clusterRow => 
+    keyFields.every(key => 
+      clusterRow[key] !== undefined && 
+      originalRow[key] !== undefined &&
+      String(clusterRow[key]) === String(originalRow[key])
+    )
+  );
+}
