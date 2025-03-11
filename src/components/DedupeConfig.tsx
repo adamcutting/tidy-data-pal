@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -50,7 +49,7 @@ import {
   Server,
   Cpu
 } from 'lucide-react';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller, UseFormReturn } from 'react-hook-form';
 import { toast } from 'sonner';
 import { MappedColumn, DedupeConfig as DedupeConfigType, DerivedBlockingRule } from '@/lib/types';
 import { getConfigurations, saveConfiguration, deleteConfiguration } from '@/lib/dedupeService';
@@ -60,6 +59,11 @@ interface DedupeConfigProps {
   mappedColumns: MappedColumn[];
   onConfigComplete: (config: DedupeConfigType) => void;
   isProcessing: boolean;
+}
+
+interface SplinkSettingsProps {
+  form?: UseFormReturn<DedupeConfigType, any, undefined>;
+  onSettingsChange?: (settings: any) => void;
 }
 
 const DedupeConfig: React.FC<DedupeConfigProps> = ({ 
@@ -111,8 +115,8 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
     name: "derivedBlockingRules" as any
   });
 
-  // Handle form submission
-  const onSubmit = (data: DedupeConfigType) => {
+  // Handle saving configuration (without starting deduplication)
+  const onSaveConfig = (data: DedupeConfigType) => {
     try {
       // Ensure useSplink is always true
       data.useSplink = true;
@@ -121,10 +125,18 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
       setSavedConfigs(getConfigurations());
       setSelectedConfig(savedConfig.id);
       toast.success(`Configuration "${data.name}" saved successfully!`);
-      onConfigComplete(data);
     } catch (error) {
       toast.error(`Failed to save configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  };
+
+  // Handle form submission for starting deduplication
+  const onSubmit = (data: DedupeConfigType) => {
+    // Ensure useSplink is always true
+    data.useSplink = true;
+    
+    // Start deduplication process
+    onConfigComplete(data);
   };
 
   const handleLoadConfig = (configId: string) => {
@@ -695,7 +707,11 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
           </Tabs>
           
           <div className="flex justify-end gap-2 mt-6">
-            <Button type="submit" disabled={isProcessing}>
+            <Button 
+              type="button" 
+              disabled={isProcessing}
+              onClick={form.handleSubmit(onSaveConfig)}
+            >
               {isProcessing ? (
                 <>
                   <AlertCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -708,7 +724,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                 </>
               )}
             </Button>
-            <Button type="button" variant="outline" onClick={() => onConfigComplete(form.getValues())}>
+            <Button type="submit" variant="outline" disabled={isProcessing}>
               <Play className="h-4 w-4 mr-2" />
               Start Deduplication
             </Button>
