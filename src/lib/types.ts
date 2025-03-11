@@ -51,6 +51,7 @@ export interface DedupeConfig {
     isTable: boolean;
   };
   enableStreamProcessing?: boolean; // Added for large dataset support
+  useWebWorker?: boolean; // Added for Web Worker support
 }
 
 export interface SavedConfig {
@@ -159,4 +160,31 @@ export type DedupeProgress = {
   currentChunk?: number; // Added for large dataset support
   totalChunks?: number; // Added for large dataset support
   debugInfo?: string; // Added for detailed debugging information
+  stage?: string; // Added for more detailed progress tracking
 };
+
+// Web Worker message types
+export interface WorkerInitMessage {
+  type: 'init';
+  data: any[];
+  mappedColumns: MappedColumn[];
+  config: DedupeConfig;
+}
+
+export interface WorkerProgressMessage {
+  type: 'progress';
+  progress: DedupeProgress;
+}
+
+export interface WorkerResultMessage {
+  type: 'result';
+  result: any;
+}
+
+export interface WorkerErrorMessage {
+  type: 'error';
+  error: string;
+}
+
+export type WorkerOutboundMessage = WorkerProgressMessage | WorkerResultMessage | WorkerErrorMessage;
+export type WorkerInboundMessage = WorkerInitMessage;

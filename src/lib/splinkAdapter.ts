@@ -1,9 +1,8 @@
-
-import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress } from './types';
+import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress, WorkerOutboundMessage } from './types';
 
 /**
  * Prepares and formats data for the Splink API according to its expected structure
- * Uses improved chunking to prevent UI freezing and manage large datasets
+ * Uses Web Workers to prevent UI freezing when processing large datasets
  */
 export const formatDataForSplinkApi = async (
   data: any[],
@@ -19,137 +18,234 @@ export const formatDataForSplinkApi = async (
   total_rows?: number;
   output_dir?: string;
 }> => {
-  // Log the start of processing with detailed information
+  // Log the start of processing
   console.log(`Starting formatDataForSplinkApi with ${data.length} records`);
-  console.log('Config:', JSON.stringify(config, null, 2));
   
-  // Get columns that are included in the deduplication
-  const includedColumns = mappedColumns
-    .filter(col => col.include && col.mappedName)
-    .map(col => col.mappedName as string);
-  
-  console.log(`Included columns (${includedColumns.length}):`, includedColumns);
-
-  // Use the first column as the unique ID if none specified, or use the configured one
-  const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
-  console.log(`Using unique ID column: ${uniqueIdColumn}`);
-
-  // Format blocking columns
-  const blockingFields = config.blockingColumns || [];
-  console.log(`Blocking fields (${blockingFields.length}):`, blockingFields);
-
-  // Format match fields - match field structure changed from "column" to "field"
-  console.log('Setting up match fields from comparisons...');
-  const matchFields = config.comparisons.map(comp => {
-    let type = 'exact';
-    
-    // Map matchType to Splink's expected format
-    if (comp.matchType === 'fuzzy') {
-      // Determine if we should use levenshtein or jaro_winkler based on threshold
-      type = comp.threshold && comp.threshold < 0.85 ? 'levenshtein' : 'jaro_winkler';
-    } else if (comp.matchType === 'partial') {
-      type = 'levenshtein';
-    }
-    
-    return {
-      field: comp.column,
-      type
-    };
-  });
-  
-  console.log(`Match fields (${matchFields.length}):`, JSON.stringify(matchFields, null, 2));
-
-  // For extremely large datasets, we'll use a different approach
-  // We'll send the first chunk to start processing and include metadata
-  // about total size to let the backend handle the rest
-  const isVeryLargeDataset = data.length > 100000;
-  const chunkSize = isVeryLargeDataset ? 50000 : 5000; // Smaller chunks for better UI responsiveness
-  
-  console.log(`Dataset size: ${data.length} records (${isVeryLargeDataset ? 'very large' : 'standard'})`);
-  console.log(`Using chunk size: ${chunkSize}`);
-  
-  // For very large datasets, we'll only process the first chunk on the client
-  const rowsToProcess = isVeryLargeDataset ? Math.min(chunkSize, data.length) : data.length;
-  const totalChunks = Math.ceil(rowsToProcess / chunkSize);
-  
-  console.log(`Will process ${rowsToProcess} rows in ${totalChunks} chunks`);
-  
-  const processedData: any[] = [];
-  
-  for (let i = 0; i < totalChunks; i++) {
-    const logPrefix = `Chunk ${i+1}/${totalChunks}:`;
-    console.log(`${logPrefix} Starting processing`);
-    
-    // Yield to the main thread before processing each chunk
-    console.log(`${logPrefix} Yielding to main thread...`);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    console.log(`${logPrefix} Resumed after yield`);
+  if (config.useWebWorker !== false && window.Worker) {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('Using Web Worker for data processing');
+        
+        // Create a new worker
+        const worker = new Worker(new URL('./dataProcessingWorker.ts', import.meta.url), { type: 'module' });
+        
+        // Handle messages from the worker
+        worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>) => {
+          const message = event.data;
+          
+          switch (message.type) {
+            case 'progress':
+              if (onProgress) {
+                onProgress(message.progress);
+              }
+              break;
+              
+            case 'result':
+              console.log('Received processed data from worker');
+              resolve(message.result);
+              worker.terminate();
+              break;
+              
+            case 'error':
+              console.error('Worker error:', message.error);
+              reject(new Error(message.error));
+              worker.terminate();
+              break;
+          }
+        };
+        
+        // Handle worker errors
+        worker.onerror = (error) => {
+          console.error('Worker error event:', error);
+          if (onProgress) {
+            onProgress({
+              status: 'failed',
+              percentage: 0,
+              statusMessage: 'Error in Web Worker',
+              error: error.message || 'Unknown error in Web Worker',
+              debugInfo: `Line: ${error.lineno}, File: ${error.filename}`
+            });
+          }
+          reject(new Error('Worker failed: ' + error.message));
+          worker.terminate();
+        };
+        
+        // Send data to worker for processing
+        console.log('Sending data to worker');
+        if (onProgress) {
+          onProgress({
+            status: 'processing',
+            percentage: 5,
+            statusMessage: 'Initializing Web Worker for data processing...',
+            recordsProcessed: 0,
+            totalRecords: data.length,
+            debugInfo: `Starting Web Worker with ${data.length} records`
+          });
+        }
+        
+        worker.postMessage({
+          type: 'init',
+          data,
+          mappedColumns,
+          config
+        });
+        
+      } catch (error) {
+        console.error('Error initializing Web Worker:', error);
+        if (onProgress) {
+          onProgress({
+            status: 'failed',
+            percentage: 0,
+            statusMessage: 'Failed to initialize Web Worker',
+            error: error instanceof Error ? error.message : 'Unknown error initializing worker',
+          });
+        }
+        reject(error);
+      }
+    });
+  } else {
+    // Fallback to the old implementation if Web Workers are not supported
+    // or explicitly disabled
+    console.log('Web Workers not supported or disabled, using main thread processing');
     
     // Update progress if callback is provided
     if (onProgress) {
-      const progressPercentage = 30 + (i / totalChunks) * 10; // Spread from 30% to 40%
-      console.log(`${logPrefix} Updating progress to ${Math.round(progressPercentage)}%`);
       onProgress({
         status: 'processing',
-        percentage: Math.round(progressPercentage),
-        statusMessage: `Preparing data for Splink API (chunk ${i+1}/${totalChunks})...`,
-        recordsProcessed: i * chunkSize,
-        totalRecords: data.length,
-        debugInfo: `Processing chunk ${i+1}/${totalChunks} (${chunkSize} records per chunk)`
+        percentage: 5,
+        statusMessage: 'Starting data preparation on main thread (Web Workers not available)...',
+        debugInfo: 'Using legacy processing method'
       });
     }
     
-    console.log(`${logPrefix} Slicing data...`);
-    // Process this chunk
-    const startIdx = i * chunkSize;
-    const endIdx = Math.min(startIdx + chunkSize, data.length);
-    console.log(`${logPrefix} Slicing from ${startIdx} to ${endIdx} (${endIdx - startIdx} records)`);
-    const chunk = data.slice(startIdx, endIdx);
+    // Get columns that are included in the deduplication
+    const includedColumns = mappedColumns
+      .filter(col => col.include && col.mappedName)
+      .map(col => col.mappedName as string);
     
-    console.log(`${logPrefix} Adding unique IDs if needed...`);
-    // Add a simple unique ID if needed for this chunk
-    const processedChunk = chunk.map((row, index) => {
-      // If the unique ID column doesn't exist in the data, add it
-      if (!row[uniqueIdColumn]) {
-        return { ...row, [uniqueIdColumn]: `id-${startIdx + index}` };
+    console.log(`Included columns (${includedColumns.length}):`, includedColumns);
+
+    // Use the first column as the unique ID if none specified, or use the configured one
+    const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
+    console.log(`Using unique ID column: ${uniqueIdColumn}`);
+
+    // Format blocking columns
+    const blockingFields = config.blockingColumns || [];
+    console.log(`Blocking fields (${blockingFields.length}):`, blockingFields);
+
+    // Format match fields - match field structure changed from "column" to "field"
+    console.log('Setting up match fields from comparisons...');
+    const matchFields = config.comparisons.map(comp => {
+      let type = 'exact';
+      
+      // Map matchType to Splink's expected format
+      if (comp.matchType === 'fuzzy') {
+        // Determine if we should use levenshtein or jaro_winkler based on threshold
+        type = comp.threshold && comp.threshold < 0.85 ? 'levenshtein' : 'jaro_winkler';
+      } else if (comp.matchType === 'partial') {
+        type = 'levenshtein';
       }
-      return row;
+      
+      return {
+        field: comp.column,
+        type
+      };
     });
     
-    console.log(`${logPrefix} Adding ${processedChunk.length} records to result`);
-    // Add processed chunk to results
-    processedData.push(...processedChunk);
-    console.log(`${logPrefix} Total processed records so far: ${processedData.length}`);
+    console.log(`Match fields (${matchFields.length}):`, JSON.stringify(matchFields, null, 2));
+
+    // For extremely large datasets, we'll use a different approach
+    // We'll send the first chunk to start processing and include metadata
+    // about total size to let the backend handle the rest
+    const isVeryLargeDataset = data.length > 100000;
+    const chunkSize = isVeryLargeDataset ? 50000 : 5000; // Smaller chunks for better UI responsiveness
+    
+    console.log(`Dataset size: ${data.length} records (${isVeryLargeDataset ? 'very large' : 'standard'})`);
+    console.log(`Using chunk size: ${chunkSize}`);
+    
+    // For very large datasets, we'll only process the first chunk on the client
+    const rowsToProcess = isVeryLargeDataset ? Math.min(chunkSize, data.length) : data.length;
+    const totalChunks = Math.ceil(rowsToProcess / chunkSize);
+    
+    console.log(`Will process ${rowsToProcess} rows in ${totalChunks} chunks`);
+    
+    const processedData: any[] = [];
+    
+    for (let i = 0; i < totalChunks; i++) {
+      const logPrefix = `Chunk ${i+1}/${totalChunks}:`;
+      console.log(`${logPrefix} Starting processing`);
+      
+      // Yield to the main thread before processing each chunk
+      console.log(`${logPrefix} Yielding to main thread...`);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      console.log(`${logPrefix} Resumed after yield`);
+      
+      // Update progress if callback is provided
+      if (onProgress) {
+        const progressPercentage = 30 + (i / totalChunks) * 10; // Spread from 30% to 40%
+        console.log(`${logPrefix} Updating progress to ${Math.round(progressPercentage)}%`);
+        onProgress({
+          status: 'processing',
+          percentage: Math.round(progressPercentage),
+          statusMessage: `Preparing data for Splink API (chunk ${i+1}/${totalChunks})...`,
+          recordsProcessed: i * chunkSize,
+          totalRecords: data.length,
+          debugInfo: `Processing chunk ${i+1}/${totalChunks} (${chunkSize} records per chunk)`
+        });
+      }
+      
+      console.log(`${logPrefix} Slicing data...`);
+      // Process this chunk
+      const startIdx = i * chunkSize;
+      const endIdx = Math.min(startIdx + chunkSize, data.length);
+      console.log(`${logPrefix} Slicing from ${startIdx} to ${endIdx} (${endIdx - startIdx} records)`);
+      const chunk = data.slice(startIdx, endIdx);
+      
+      console.log(`${logPrefix} Adding unique IDs if needed...`);
+      // Add a simple unique ID if needed for this chunk
+      const processedChunk = chunk.map((row, index) => {
+        // If the unique ID column doesn't exist in the data, add it
+        if (!row[uniqueIdColumn]) {
+          return { ...row, [uniqueIdColumn]: `id-${startIdx + index}` };
+        }
+        return row;
+      });
+      
+      console.log(`${logPrefix} Adding ${processedChunk.length} records to result`);
+      // Add processed chunk to results
+      processedData.push(...processedChunk);
+      console.log(`${logPrefix} Total processed records so far: ${processedData.length}`);
+    }
+
+    console.log(`All chunks processed. Total records: ${processedData.length}`);
+
+    // Generate a unique job ID for tracking
+    const jobId = `job_${new Date().getTime()}_${Math.random().toString(36).substring(2, 10)}`;
+    console.log(`Generated job ID: ${jobId}`);
+
+    // Create the payload
+    console.log('Creating payload for API...');
+    const payload = {
+      unique_id_column: uniqueIdColumn,
+      blocking_fields: blockingFields,
+      match_fields: matchFields,
+      input_data: processedData,
+      job_id: jobId, // Add the job ID to the payload
+      chunk_size: chunkSize, // Add chunk size for backend reference
+      total_rows: data.length // Add total rows for backend chunking
+    };
+
+    // Add output directory if specified in settings
+    if (config.splinkSettings?.outputDir) {
+      payload['output_dir'] = config.splinkSettings.outputDir;
+      console.log(`Using output directory: ${config.splinkSettings.outputDir}`);
+    }
+
+    console.log('Payload creation complete. Ready to send to API.');
+    console.log(`Data size: ${JSON.stringify(processedData).length / 1024 / 1024} MB`);
+
+    return payload;
   }
-
-  console.log(`All chunks processed. Total records: ${processedData.length}`);
-
-  // Generate a unique job ID for tracking
-  const jobId = `job_${new Date().getTime()}_${Math.random().toString(36).substring(2, 10)}`;
-  console.log(`Generated job ID: ${jobId}`);
-
-  // Create the payload
-  console.log('Creating payload for API...');
-  const payload = {
-    unique_id_column: uniqueIdColumn,
-    blocking_fields: blockingFields,
-    match_fields: matchFields,
-    input_data: processedData,
-    job_id: jobId, // Add the job ID to the payload
-    chunk_size: chunkSize, // Add chunk size for backend reference
-    total_rows: data.length // Add total rows for backend chunking
-  };
-
-  // Add output directory if specified in settings
-  if (config.splinkSettings?.outputDir) {
-    payload['output_dir'] = config.splinkSettings.outputDir;
-    console.log(`Using output directory: ${config.splinkSettings.outputDir}`);
-  }
-
-  console.log('Payload creation complete. Ready to send to API.');
-  console.log(`Data size: ${JSON.stringify(processedData).length / 1024 / 1024} MB`);
-
-  return payload;
 };
 
 /**

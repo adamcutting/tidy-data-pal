@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, XCircle, Info } from "lucide-react";
+import { RefreshCw, AlertTriangle, XCircle, Info, Cpu } from "lucide-react";
 import { toast } from "sonner";
 
 export interface DedupeProgress {
@@ -15,7 +15,10 @@ export interface DedupeProgress {
   recordsProcessed?: number;
   totalRecords?: number;
   error?: string;
-  debugInfo?: string; // Added for detailed debugging information
+  debugInfo?: string;
+  stage?: string; // Added for more detailed progress tracking
+  currentChunk?: number;
+  totalChunks?: number;
 }
 
 interface ProgressIndicatorProps {
@@ -32,12 +35,21 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
   const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
   const [lastProgressUpdate, setLastProgressUpdate] = useState<number>(Date.now());
   const [stalled, setStalled] = useState<boolean>(false);
+  const [lastPercentage, setLastPercentage] = useState<number>(progress.percentage || 0);
+  const [frozenTime, setFrozenTime] = useState<number>(0);
   
   // Track when progress updates come in
   useEffect(() => {
-    setLastProgressUpdate(Date.now());
-    setStalled(false);
-  }, [progress]);
+    const now = Date.now();
+    setLastProgressUpdate(now);
+    
+    // Reset stalled status if we get a real progress update with a different percentage
+    if (progress.percentage !== lastPercentage) {
+      setLastPercentage(progress.percentage);
+      setStalled(false);
+      setFrozenTime(0);
+    }
+  }, [progress, lastPercentage]);
   
   useEffect(() => {
     let timer: number | null = null;
@@ -63,11 +75,20 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       // Timer to check if progress has stalled
       stalledCheckTimer = window.setInterval(() => {
         const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
-        // If no update in 15 seconds and not already marked as stalled
-        if (timeSinceLastUpdate > 15000 && !stalled) {
+        
+        // If percentage hasn't changed in a while, increment frozen time counter
+        if (progress.percentage === lastPercentage) {
+          setFrozenTime(prev => prev + 1);
+        } else {
+          // Reset if we got new percentage
+          setFrozenTime(0);
+        }
+        
+        // If no update in 10 seconds and not already marked as stalled
+        if (timeSinceLastUpdate > 10000 && !stalled) {
           setStalled(true);
           console.warn(`Process appears to be stalled. No updates for ${Math.floor(timeSinceLastUpdate/1000)} seconds.`);
-          toast.warning("Processing appears to be stalled. Browser may be unresponsive due to large data processing.", {
+          toast.warning("Processing appears to be stalled. The application may be processing a large amount of data.", {
             duration: 10000,
             action: {
               label: "Cancel Job",
@@ -75,7 +96,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             }
           });
         }
-      }, 5000);
+      }, 1000);
     }
 
     return () => {
@@ -86,7 +107,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
         clearInterval(stalledCheckTimer);
       }
     };
-  }, [progress.status, isLongRunning, lastProgressUpdate, stalled, onCancel]);
+  }, [progress.status, isLongRunning, lastProgressUpdate, lastPercentage, stalled, frozenTime, onCancel]);
 
   // Format time elapsed
   const formatTime = (seconds: number): string => {
@@ -111,6 +132,18 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
         return 'text-red-500';
       default:
         return 'text-primary';
+    }
+  };
+
+  const getStageIcon = () => {
+    if (!progress.stage) return null;
+    
+    switch (progress.stage) {
+      case 'initialization':
+      case 'preparation':
+        return <Cpu className="h-4 w-4 animate-pulse" />;
+      default:
+        return null;
     }
   };
 
@@ -174,7 +207,11 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
         <Progress value={progress.percentage} className="h-2 mb-2" />
         
         <div className="text-sm text-muted-foreground space-y-2">
-          <p className="font-medium">{progress.statusMessage}</p>
+          <p className="font-medium flex items-center gap-2">
+            {getStageIcon()}
+            {progress.statusMessage}
+            {progress.stage && <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{progress.stage}</span>}
+          </p>
           
           {isProcessing && (
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -192,6 +229,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             </div>
           )}
           
+          {/* Records processed indicator */}
           {progress.recordsProcessed !== undefined && progress.totalRecords !== undefined && (
             <div className="bg-muted p-2 rounded">
               <p className="flex justify-between">
@@ -205,16 +243,45 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             </div>
           )}
           
+          {/* Chunk processing indicator */}
+          {progress.currentChunk !== undefined && progress.totalChunks !== undefined && (
+            <div className="bg-muted p-2 rounded mt-2">
+              <p className="flex justify-between">
+                <span>Chunk progress:</span>
+                <span className="font-mono">{progress.currentChunk} / {progress.totalChunks}</span>
+              </p>
+              <Progress
+                value={(progress.currentChunk / progress.totalChunks) * 100}
+                className="h-1 mt-1"
+              />
+            </div>
+          )}
+          
+          {/* Stall indicator */}
+          {stalled && (
+            <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800 mt-2">
+              <p className="flex justify-between text-red-700 dark:text-red-400">
+                <span>UI unresponsive for:</span>
+                <span className="font-mono">{formatTime(frozenTime)}</span>
+              </p>
+              <p className="text-xs text-red-600 dark:text-red-500 mt-1">
+                The browser main thread may be blocked by intensive processing. Consider enabling Web Worker in configuration.
+              </p>
+            </div>
+          )}
+          
           {/* Show debug information if enabled */}
           {showDebugInfo && (
             <div className="mt-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-md">
               <p className="text-xs font-bold mb-1">Debug Information:</p>
               <div className="text-xs font-mono overflow-auto max-h-40 whitespace-pre-wrap">
                 <p>Status: {progress.status}</p>
+                <p>Stage: {progress.stage || 'not specified'}</p>
                 <p>Percentage: {progress.percentage}%</p>
                 <p>Last update: {new Date(lastProgressUpdate).toISOString()}</p>
                 <p>Time since update: {Math.floor((Date.now() - lastProgressUpdate)/1000)}s</p>
                 <p>Stalled: {stalled ? 'Yes' : 'No'}</p>
+                <p>Frozen time: {frozenTime}s</p>
                 {progress.debugInfo && <p>Details: {progress.debugInfo}</p>}
                 {jobId && <p>Job ID: {jobId}</p>}
               </div>
