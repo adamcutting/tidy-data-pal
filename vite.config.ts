@@ -21,7 +21,6 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    include: ['mssql', 'mysql2'],
     exclude: ['mssql', 'mysql2/promise'],
     esbuildOptions: {
       // Node.js global to browser globalThis
