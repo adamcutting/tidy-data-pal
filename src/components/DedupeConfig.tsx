@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -51,7 +52,7 @@ import {
 } from 'lucide-react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { toast } from 'sonner';
-import { MappedColumn, DedupeConfig as DedupeConfigType } from '@/lib/types';
+import { MappedColumn, DedupeConfig as DedupeConfigType, DerivedBlockingRule } from '@/lib/types';
 import { getConfigurations, saveConfiguration, deleteConfiguration } from '@/lib/dedupeService';
 import SplinkSettings from './SplinkSettings';
 
@@ -59,6 +60,10 @@ interface DedupeConfigProps {
   mappedColumns: MappedColumn[];
   onConfigComplete: (config: DedupeConfigType) => void;
   isProcessing: boolean;
+}
+
+interface SplinkSettingsProps {
+  form: ReturnType<typeof useForm<DedupeConfigType>>;
 }
 
 const DedupeConfig: React.FC<DedupeConfigProps> = ({ 
@@ -232,7 +237,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Accordion type="multiple" collapsible>
+                  <Accordion type="multiple">
                     {comparisonFields.map((field, index) => (
                       <AccordionItem value={`item-${index}`} key={field.id}>
                         <AccordionTrigger>
@@ -460,7 +465,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
                     )}
                   />
                   {form.watch('useSplink') && (
-                    <SplinkSettings form={form} />
+                    <SplinkSettings form={form as any} />
                   )}
                 </CardContent>
               </Card>

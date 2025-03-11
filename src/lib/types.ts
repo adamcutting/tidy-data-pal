@@ -164,6 +164,10 @@ export type DedupeProgress = {
 };
 
 // Web Worker message types
+export interface WorkerReadyMessage {
+  type: 'ready';
+}
+
 export interface WorkerInitMessage {
   type: 'init';
   data: any[];
@@ -186,5 +190,5 @@ export interface WorkerErrorMessage {
   error: string;
 }
 
-export type WorkerOutboundMessage = WorkerProgressMessage | WorkerResultMessage | WorkerErrorMessage;
+export type WorkerOutboundMessage = WorkerProgressMessage | WorkerResultMessage | WorkerErrorMessage | WorkerReadyMessage;
 export type WorkerInboundMessage = WorkerInitMessage;
