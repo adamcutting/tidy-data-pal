@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -28,7 +29,7 @@ export interface DedupeConfig {
   blockingColumns: string[];
   derivedBlockingRules?: DerivedBlockingRule[];
   threshold: number;
-  useSplink?: boolean; // Toggle between local and Splink backend
+  useSplink: boolean; // Always true but kept for backward compatibility
   splinkParams?: {
     termFrequencyAdjustments?: boolean;
     retainMatchingColumns?: boolean;

@@ -1,4 +1,3 @@
-
 import { FileData, MappedColumn, DedupeConfig, DedupeResult, SavedConfig, SplinkSettings, DedupeProgress } from './types';
 import { pollDedupeStatus } from './sqlService';
 
@@ -184,7 +183,7 @@ const preprocessDataForComparison = (
   });
 };
 
-// Main deduplication function - decides whether to use Splink or local implementation
+// Main deduplication function - now always uses Splink
 export const deduplicateData = async (
   data: any[],
   mappedColumns: MappedColumn[],
@@ -208,58 +207,34 @@ export const deduplicateData = async (
   const jobId = generateId();
   
   try {
-    let result: DedupeResult;
+    // Update progress
+    if (onProgress) {
+      onProgress({
+        status: 'processing',
+        percentage: 20,
+        statusMessage: 'Preparing data for Splink processing...',
+        recordsProcessed: Math.floor(data.length * 0.2),
+        totalRecords: data.length
+      });
+    }
     
-    // Use Splink if enabled in the config
-    if (config.useSplink) {
-      // Update progress
+    // First check if Splink API is available
+    const isApiAvailable = await testSplinkConnection();
+    
+    if (!isApiAvailable) {
       if (onProgress) {
         onProgress({
-          status: 'processing',
-          percentage: 20,
-          statusMessage: 'Preparing data for Splink processing...',
-          recordsProcessed: Math.floor(data.length * 0.2),
-          totalRecords: data.length
+          status: 'failed',
+          percentage: 0,
+          statusMessage: 'Splink API is not available. Please check your connection settings.',
+          error: 'Failed to connect to Splink API'
         });
       }
-      
-      try {
-        // First check if Splink API is available
-        const isApiAvailable = await testSplinkConnection();
-        
-        if (!isApiAvailable) {
-          if (onProgress) {
-            onProgress({
-              status: 'processing',
-              percentage: 30,
-              statusMessage: 'Splink API is not available. Falling back to local deduplication...',
-              recordsProcessed: Math.floor(data.length * 0.3),
-              totalRecords: data.length
-            });
-          }
-          throw new Error('Splink API is not available');
-        }
-        
-        // If API is available, use Splink
-        result = await deduplicateWithSplink(data, mappedColumns, config, onProgress);
-      } catch (error) {
-        console.warn('Failed to use Splink, falling back to local implementation:', error);
-        if (onProgress) {
-          onProgress({
-            status: 'processing',
-            percentage: 30,
-            statusMessage: 'Splink processing failed. Falling back to local deduplication...',
-            recordsProcessed: Math.floor(data.length * 0.3),
-            totalRecords: data.length
-          });
-        }
-        // Fall back to local implementation if Splink fails
-        result = await deduplicateLocally(data, mappedColumns, config, onProgress);
-      }
-    } else {
-      // Use local implementation as requested
-      result = await deduplicateLocally(data, mappedColumns, config, onProgress);
+      throw new Error('Splink API is not available. Please configure Splink API connection in settings.');
     }
+    
+    // Use Splink for deduplication
+    const result = await deduplicateWithSplink(data, mappedColumns, config, onProgress);
     
     // Add job ID to result for progress tracking
     result.jobId = jobId;
@@ -411,220 +386,7 @@ export const deduplicateWithSplink = async (
   }
 };
 
-// Enhanced local deduplication function with progress tracking
-export const deduplicateLocally = async (
-  data: any[],
-  mappedColumns: MappedColumn[],
-  config: DedupeConfig,
-  onProgress?: (progress: DedupeProgress) => void
-): Promise<DedupeResult> => {
-  console.log('Deduplicating locally with config:', config);
-  
-  // Apply column mapping
-  if (onProgress) {
-    onProgress({
-      status: 'processing',
-      percentage: 20,
-      statusMessage: 'Mapping columns...',
-      recordsProcessed: Math.floor(data.length * 0.2),
-      totalRecords: data.length
-    });
-  }
-  
-  const processedData = data.map(row => {
-    const newRow: Record<string, any> = {};
-    mappedColumns.forEach(col => {
-      if (col.include && col.mappedName) {
-        newRow[col.mappedName] = row[col.originalName];
-      }
-    });
-    return newRow;
-  });
-  
-  // Preprocess data for better matching
-  if (onProgress) {
-    onProgress({
-      status: 'processing',
-      percentage: 30,
-      statusMessage: 'Preprocessing data for comparison...',
-      recordsProcessed: Math.floor(data.length * 0.3),
-      totalRecords: data.length
-    });
-  }
-  
-  const normalizedData = preprocessDataForComparison(processedData, mappedColumns, config);
-  
-  // Apply blocking rules
-  if (onProgress) {
-    onProgress({
-      status: 'blocked',
-      percentage: 40,
-      statusMessage: 'Applying blocking rules...',
-      recordsProcessed: Math.floor(data.length * 0.4),
-      totalRecords: data.length
-    });
-  }
-  
-  // Simple deduplication based on exact matches of blocking columns
-  const uniqueMap = new Map();
-  const clusters: any[] = [];
-  
-  normalizedData.forEach((row, index) => {
-    // Create a key based on blocking columns (using normalized values)
-    const blockingKey = config.blockingColumns
-      .map(col => row[col] || '')
-      .join('|');
-    
-    if (!uniqueMap.has(blockingKey)) {
-      uniqueMap.set(blockingKey, { index, cluster: clusters.length });
-      clusters.push([index]);
-    } else {
-      const { cluster } = uniqueMap.get(blockingKey);
-      clusters[cluster].push(index);
-    }
-  });
-  
-  // Update progress
-  if (onProgress) {
-    onProgress({
-      status: 'processing',
-      percentage: 60,
-      statusMessage: 'Comparing records within blocks...',
-      recordsProcessed: Math.floor(data.length * 0.6),
-      totalRecords: data.length
-    });
-  }
-  
-  // Improve matching within clusters using comparison columns
-  const improvedClusters: any[] = [];
-  
-  let processedClusters = 0;
-  const totalClusters = clusters.length;
-  
-  for (const cluster of clusters) {
-    if (cluster.length <= 1) {
-      // No need to compare, add as is
-      improvedClusters.push(cluster);
-    } else {
-      // Create sub-clusters based on comparison columns
-      const subClusters: number[][] = [];
-      const assigned = new Set<number>();
-      
-      // Compare each record with every other record in the cluster
-      for (let i = 0; i < cluster.length; i++) {
-        if (assigned.has(cluster[i])) continue;
-        
-        const subCluster = [cluster[i]];
-        assigned.add(cluster[i]);
-        
-        for (let j = i + 1; j < cluster.length; j++) {
-          if (assigned.has(cluster[j])) continue;
-          
-          // Check if records are similar based on comparison columns
-          const record1 = normalizedData[cluster[i]];
-          const record2 = normalizedData[cluster[j]];
-          
-          let totalScore = 0;
-          let totalWeight = 0;
-          
-          // Compare each field according to the comparison config
-          for (const comp of config.comparisons) {
-            const field1 = record1[comp.column] || '';
-            const field2 = record2[comp.column] || '';
-            
-            let score = 0;
-            
-            // Apply different matching strategies
-            if (comp.matchType === 'exact') {
-              score = field1 === field2 ? 1 : 0;
-            } else if (comp.matchType === 'fuzzy') {
-              score = calculateSimilarity(field1, field2);
-            } else if (comp.matchType === 'partial') {
-              score = field1.includes(field2) || field2.includes(field1) ? 
-                Math.min(field1.length, field2.length) / Math.max(field1.length, field2.length) : 0;
-            }
-            
-            // Apply threshold for non-exact matches
-            if (comp.matchType !== 'exact' && comp.threshold && score < comp.threshold) {
-              score = 0;
-            }
-            
-            totalScore += score;
-            totalWeight += 1;
-          }
-          
-          const similarityScore = totalWeight > 0 ? totalScore / totalWeight : 0;
-          
-          // If similarity is above threshold, add to the same sub-cluster
-          if (similarityScore >= config.threshold) {
-            subCluster.push(cluster[j]);
-            assigned.add(cluster[j]);
-          }
-        }
-        
-        subClusters.push(subCluster);
-      }
-      
-      // Add all sub-clusters to the improved clusters
-      improvedClusters.push(...subClusters);
-    }
-    
-    // Update progress for cluster processing
-    processedClusters++;
-    if (onProgress && processedClusters % 10 === 0) {
-      const percentComplete = 60 + Math.min(30, Math.floor((processedClusters / totalClusters) * 30));
-      onProgress({
-        status: 'clustering',
-        percentage: percentComplete,
-        statusMessage: `Clustering similar records (${processedClusters}/${totalClusters})...`,
-        recordsProcessed: Math.floor(data.length * (percentComplete / 100)),
-        totalRecords: data.length
-      });
-    }
-  }
-  
-  // Final clustering update
-  if (onProgress) {
-    onProgress({
-      status: 'clustering',
-      percentage: 90,
-      statusMessage: 'Finalizing clusters...',
-      recordsProcessed: Math.floor(data.length * 0.9),
-      totalRecords: data.length
-    });
-  }
-  
-  // Get unique rows (first from each cluster)
-  const uniqueRows = improvedClusters.map(cluster => processedData[cluster[0]]);
-  
-  // Create flagged data with duplicate information
-  const flaggedData = processedData.map((row, index) => {
-    // Find which cluster this row belongs to
-    const clusterIndex = improvedClusters.findIndex(cluster => cluster.includes(index));
-    const cluster = improvedClusters[clusterIndex];
-    
-    // Determine if this row is a duplicate (not the first in its cluster)
-    const isDuplicate = cluster && cluster.indexOf(index) !== 0;
-    
-    return {
-      ...row,
-      __is_duplicate: isDuplicate ? 'Yes' : 'No',
-      __cluster_id: clusterIndex >= 0 ? `cluster_${clusterIndex}` : 'unique',
-      __record_id: `record_${index}`
-    };
-  });
-  
-  return {
-    originalRows: data.length,
-    uniqueRows: uniqueRows.length,
-    duplicateRows: data.length - uniqueRows.length,
-    clusters: improvedClusters,
-    processedData: uniqueRows, // Return only unique rows
-    flaggedData: flaggedData, // Return all rows with flags
-  };
-};
-
-// Helper function to calculate string similarity (Levenshtein distance based)
+// Helper function to calculate string similarity (used in remaining functions)
 const calculateSimilarity = (str1: string, str2: string): number => {
   if (!str1 && !str2) return 1;
   if (!str1 || !str2) return 0;

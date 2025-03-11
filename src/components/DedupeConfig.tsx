@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -35,7 +34,6 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
   const [comparisons, setComparisons] = useState<{ column: string; matchType: 'exact' | 'fuzzy' | 'partial'; threshold?: number }[]>([]);
   const [blockingRules, setBlockingRules] = useState<BlockingRule[]>([]);
   const [threshold, setThreshold] = useState<number>(0.8);
-  const [useSplink, setUseSplink] = useState<boolean>(false);
   const [uniqueIdColumn, setUniqueIdColumn] = useState<string | null>(null);
   
   // Advanced Splink configuration options
@@ -128,17 +126,17 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
           targetColumn: rule.column
         })),
       threshold,
-      useSplink,
+      useSplink: true, // Always use Splink
       dataSource: 'file', // Default to file - will be overridden in parent component
       // Add Splink parameters including the unique ID column
-      splinkParams: useSplink ? {
+      splinkParams: {
         termFrequencyAdjustments: advancedConfig.termFrequencyAdjustments,
         retainMatchingColumns: advancedConfig.retainMatchingColumns,
         retainIntermediateCalculations: advancedConfig.retainIntermediateCalculations,
         trainModel: advancedConfig.trainModel,
         clusteringThreshold: advancedConfig.clusteringThreshold,
         uniqueIdColumn: uniqueIdColumn || undefined
-      } : undefined
+      }
     };
     await onConfigComplete(config);
   };
@@ -190,50 +188,32 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
           </p>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Label htmlFor="use-splink" className="cursor-pointer">Use Splink for Advanced Matching</Label>
-              <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
-                Recommended
-              </span>
-            </div>
-            <Switch id="use-splink" checked={useSplink} onCheckedChange={setUseSplink} />
+        {/* Splink settings section - always shown now */}
+        <SplinkSettings />
+        
+        <div className="space-y-2 p-3 border rounded-md bg-muted/40">
+          <div className="flex items-center space-x-2 mb-1">
+            <Key className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="unique-id-column">Unique ID Column</Label>
           </div>
+          <Select 
+            value={uniqueIdColumn || "none"} 
+            onValueChange={setUniqueIdColumn}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select a unique identifier column" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No unique ID (auto-generate)</SelectItem>
+              {availableColumns.map(column => (
+                <SelectItem key={column} value={column}>{column}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">
-            Splink provides more accurate results using machine learning and probabilistic matching.
+            Select a column that uniquely identifies each record. If none exists, Splink will generate IDs automatically.
           </p>
         </div>
-
-        {useSplink && (
-          <>
-            <SplinkSettings />
-            
-            <div className="space-y-2 p-3 border rounded-md bg-muted/40">
-              <div className="flex items-center space-x-2 mb-1">
-                <Key className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="unique-id-column">Unique ID Column</Label>
-              </div>
-              <Select 
-                value={uniqueIdColumn || "none"} 
-                onValueChange={setUniqueIdColumn}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a unique identifier column" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No unique ID (auto-generate)</SelectItem>
-                  {availableColumns.map(column => (
-                    <SelectItem key={column} value={column}>{column}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Select a column that uniquely identifies each record. If none exists, Splink will generate IDs automatically.
-              </p>
-            </div>
-          </>
-        )}
 
         <div className="border-t pt-4">
           <h3 className="font-medium mb-2">Column Comparisons</h3>
@@ -428,66 +408,64 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({ mappedColumns, onConfigComp
           </div>
         </div>
 
-        {useSplink && (
-          <Accordion type="single" collapsible className="border-t pt-4">
-            <AccordionItem value="advanced">
-              <AccordionTrigger>Advanced Splink Configuration</AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="term-freq">Term Frequency Adjustments</Label>
-                      <p className="text-xs text-muted-foreground">Adjust for common values like "Smith" or "Ltd"</p>
-                    </div>
-                    <Switch 
-                      id="term-freq" 
-                      checked={advancedConfig.termFrequencyAdjustments} 
-                      onCheckedChange={(checked) => handleAdvancedConfigChange('termFrequencyAdjustments', checked)} 
-                    />
+        <Accordion type="single" collapsible className="border-t pt-4">
+          <AccordionItem value="advanced">
+            <AccordionTrigger>Advanced Splink Configuration</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="term-freq">Term Frequency Adjustments</Label>
+                    <p className="text-xs text-muted-foreground">Adjust for common values like "Smith" or "Ltd"</p>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="retain-cols">Retain Matching Columns</Label>
-                      <p className="text-xs text-muted-foreground">Keep all columns in the output for reference</p>
-                    </div>
-                    <Switch 
-                      id="retain-cols" 
-                      checked={advancedConfig.retainMatchingColumns} 
-                      onCheckedChange={(checked) => handleAdvancedConfigChange('retainMatchingColumns', checked)} 
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="train-model">Train Model</Label>
-                      <p className="text-xs text-muted-foreground">Use machine learning to improve matching</p>
-                    </div>
-                    <Switch 
-                      id="train-model" 
-                      checked={advancedConfig.trainModel} 
-                      onCheckedChange={(checked) => handleAdvancedConfigChange('trainModel', checked)} 
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Clustering Threshold ({advancedConfig.clusteringThreshold.toFixed(2)})</Label>
-                    <Slider 
-                      value={[advancedConfig.clusteringThreshold]} 
-                      onValueChange={(value) => handleAdvancedConfigChange('clusteringThreshold', value[0])} 
-                      min={0.5} 
-                      max={1} 
-                      step={0.01} 
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Threshold used for grouping similar records into clusters
-                    </p>
-                  </div>
+                  <Switch 
+                    id="term-freq" 
+                    checked={advancedConfig.termFrequencyAdjustments} 
+                    onCheckedChange={(checked) => handleAdvancedConfigChange('termFrequencyAdjustments', checked)} 
+                  />
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        )}
+                  
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="retain-cols">Retain Matching Columns</Label>
+                    <p className="text-xs text-muted-foreground">Keep all columns in the output for reference</p>
+                  </div>
+                  <Switch 
+                    id="retain-cols" 
+                    checked={advancedConfig.retainMatchingColumns} 
+                    onCheckedChange={(checked) => handleAdvancedConfigChange('retainMatchingColumns', checked)} 
+                  />
+                </div>
+                  
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="train-model">Train Model</Label>
+                    <p className="text-xs text-muted-foreground">Use machine learning to improve matching</p>
+                  </div>
+                  <Switch 
+                    id="train-model" 
+                    checked={advancedConfig.trainModel} 
+                    onCheckedChange={(checked) => handleAdvancedConfigChange('trainModel', checked)} 
+                  />
+                </div>
+                  
+                <div className="space-y-2">
+                  <Label>Clustering Threshold ({advancedConfig.clusteringThreshold.toFixed(2)})</Label>
+                  <Slider 
+                    value={[advancedConfig.clusteringThreshold]} 
+                    onValueChange={(value) => handleAdvancedConfigChange('clusteringThreshold', value[0])} 
+                    min={0.5} 
+                    max={1} 
+                    step={0.01} 
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Threshold used for grouping similar records into clusters
+                  </p>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <div className="border-t pt-4">
           <Button 
