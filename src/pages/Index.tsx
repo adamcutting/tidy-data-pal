@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Database, ServerCog } from 'lucide-react';
+import { Database } from 'lucide-react';
 import SourceSelector from '@/components/SourceSelector';
 import ColumnMapping from '@/components/ColumnMapping';
 import DedupeConfig from '@/components/DedupeConfig';
@@ -209,18 +209,18 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5]">
-      <header className="w-full py-4 px-4 sm:px-6 lg:px-8 bg-white border-b border-gray-200 shadow-sm">
+    <div className="min-h-screen bg-background">
+      <header className="w-full py-6 px-4 sm:px-6 lg:px-8 border-b bg-[#403E43] text-white">
         <div className="container max-w-screen-xl mx-auto">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-3">
-              <ServerCog className="h-8 w-8 text-[#009fe3]" />
+              <Database className="h-8 w-8 text-[#1EAEDB]" />
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-[#333333] animate-fade-in">
-                  Data HQ Deduplication Tool
+                <h1 className="text-2xl font-semibold tracking-tight animate-fade-in">
+                  Data HQ Dedupe
                 </h1>
-                <p className="text-muted-foreground animate-fade-in text-gray-600">
-                  Clean and deduplicate your data with professional accuracy
+                <p className="text-muted-foreground animate-fade-in text-gray-300">
+                  Streamline your data by removing duplicates with ease
                 </p>
               </div>
             </div>
@@ -242,17 +242,15 @@ const Index = () => {
         </div>
       </main>
 
-      <footer className="w-full py-6 border-t mt-auto bg-[#333333] text-white">
+      <footer className="w-full py-6 border-t mt-auto bg-[#403E43] text-white">
         <div className="container max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <p className="text-sm">
-              &copy; {new Date().getFullYear()} Data HQ Ltd. All rights reserved.
+            <p className="text-sm text-gray-300">
+              &copy; {new Date().getFullYear()} Data HQ. All rights reserved.
             </p>
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-gray-300">
-                Enterprise-grade data deduplication
-              </p>
-            </div>
+            <p className="text-xs text-gray-300">
+              A tool for powerful data deduplication
+            </p>
           </div>
         </div>
       </footer>
