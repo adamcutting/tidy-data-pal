@@ -1,3 +1,4 @@
+
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress, DatabaseMetadata } from './types';
 import { toast } from 'sonner';
 import * as mssql from 'mssql';
@@ -12,12 +13,15 @@ export const getDatabaseMetadata = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig
 ): Promise<DatabaseMetadata> => {
-  console.log(`Fetching metadata for ${dbType} database:`, config);
+  console.log(`Fetching metadata for ${dbType} database:`, 
+    { ...config, password: config.password ? '***HIDDEN***' : undefined });
 
   if (dbType === 'mssql') {
     try {
       // Create a connection to SQL Server
       const pool = await createMSSQLPool(config as MSSQLConfig);
+      
+      console.log("Connected to SQL Server, now fetching tables and views...");
       
       // Query to get all user tables
       const tablesResult = await pool.request().query(`
@@ -116,7 +120,8 @@ export const loadDatabaseData = async (
   isTable: boolean,
   onProgressUpdate: (progress: DedupeProgress) => void
 ): Promise<any[]> => {
-  console.log(`Loading data from ${dbType} database:`, config);
+  console.log(`Loading data from ${dbType} database:`, 
+    { ...config, password: config.password ? '***HIDDEN***' : undefined });
   console.log(`Query/Table: ${query}, isTable: ${isTable}`);
   
   // Set initial progress state
@@ -180,7 +185,7 @@ export const loadDatabaseData = async (
   }
 };
 
-// Polling function to check dedupe status
+// Remove the mock data polling function and replace with real implementation
 export const pollDedupeStatus = async (
   jobId: string, 
   onProgressUpdate: (progress: DedupeProgress) => void
