@@ -1,3 +1,5 @@
+
+import * as mssql from 'mssql';
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress } from './types';
 
 // Polling interval in ms for checking job status
@@ -22,11 +24,11 @@ export const loadDatabaseData = async (
     let data: any[] = [];
 
     if (dbType === 'mssql') {
-      // Since we're in a browser environment, we'll use a mock implementation
-      // instead of the actual MSSQL connection
-      data = await mockMSSQLData(config as MSSQLConfig, query, isTable, onProgressUpdate);
+      // Real MSSQL implementation
+      data = await loadMSSQLData(config as MSSQLConfig, query, isTable, onProgressUpdate);
     } else if (dbType === 'mysql') {
       // For now, we'll use mock data for MySQL until we implement MySQL connectivity
+      // In a real implementation, you'd need to add a MySQL client library
       data = await mockMySQLData(query, onProgressUpdate);
     }
 
@@ -52,48 +54,75 @@ export const loadDatabaseData = async (
   }
 };
 
-// Mock implementation for MSSQL
-const mockMSSQLData = async (
+// Real implementation for MSSQL
+const loadMSSQLData = async (
   config: MSSQLConfig,
   query: string,
   isTable: boolean,
   onProgressUpdate: (progress: DedupeProgress) => void
 ): Promise<any[]> => {
-  // Simulate connection delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Update progress to loading
+  // Update progress to connecting
   onProgressUpdate({
-    status: 'loading',
-    percentage: 30,
-    statusMessage: isTable ? 
-      `Loading data from table "${query}"...` : 
-      'Executing query and loading results...',
+    status: 'connecting',
+    percentage: 20,
+    statusMessage: `Connecting to SQL Server at ${config.server}...`,
   });
+  
+  // Create connection configuration
+  const connectionConfig: mssql.config = {
+    user: config.user,
+    password: config.password,
+    server: config.server,
+    port: config.port,
+    database: config.database,
+    options: {
+      encrypt: config.options?.encrypt || true,
+      trustServerCertificate: config.options?.trustServerCertificate || true,
+    },
+    connectionTimeout: 30000,
+    requestTimeout: 30000,
+  };
 
-  console.log(`Would connect to MSSQL server: ${config.server}:${config.port}`);
-  console.log(`DB: ${config.database}, User: ${config.user}`);
-  console.log(`Query/Table: ${isTable ? `SELECT * FROM ${query}` : query}`);
-  
-  // Simulate data loading delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // Generate mock data
-  const mockData = generateMockData(query, 1000);
-  
-  // Update progress
-  onProgressUpdate({
-    status: 'loading',
-    percentage: 70,
-    statusMessage: `Processing ${mockData.length} records...`,
-    recordsProcessed: mockData.length,
-    totalRecords: mockData.length
-  });
-  
-  return mockData;
+  try {
+    // Create connection pool
+    const pool = await mssql.connect(connectionConfig);
+    
+    // Update progress
+    onProgressUpdate({
+      status: 'loading',
+      percentage: 40,
+      statusMessage: isTable ? 
+        `Loading data from table "${query}"...` : 
+        'Executing query and loading results...',
+    });
+
+    // Execute query
+    const result = await pool.request().query(isTable ? 
+      `SELECT * FROM ${query}` : 
+      query
+    );
+    
+    // Update progress
+    onProgressUpdate({
+      status: 'loading',
+      percentage: 80,
+      statusMessage: `Processing ${result.recordset.length} records...`,
+      recordsProcessed: result.recordset.length,
+      totalRecords: result.recordset.length
+    });
+    
+    // Close the connection
+    await pool.close();
+    
+    return result.recordset;
+  } catch (error) {
+    console.error('SQL Server error:', error);
+    throw error;
+  }
 };
 
-// Function to load data from MySQL (mock implementation)
+// Function to load data from MySQL (mock implementation for now)
+// In a real implementation, you would use a MySQL client library
 const mockMySQLData = async (
   query: string,
   onProgressUpdate: (progress: DedupeProgress) => void

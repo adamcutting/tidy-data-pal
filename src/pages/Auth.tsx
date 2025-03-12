@@ -28,18 +28,6 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // For demo purposes, automatically redirect to home
-      console.log("Mock authentication successful");
-      toast.success(isSignUp ? 'Sign up successful!' : 'Sign in successful!');
-      
-      // Redirect to home after a brief delay
-      setTimeout(() => {
-        navigate('/');
-        window.location.reload(); // Force reload to update auth state
-      }, 1000);
-      
-      // Actual Supabase auth (commented out for now)
-      /*
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
@@ -55,7 +43,6 @@ const Auth = () => {
         if (error) throw error;
         navigate('/');
       }
-      */
     } catch (error: any) {
       toast.error(error.message);
     } finally {

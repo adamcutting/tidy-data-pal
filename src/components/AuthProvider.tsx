@@ -22,26 +22,23 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // Set to false to skip loading state
+  const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // For demonstration, we're using mock authentication
-    console.log("AuthProvider initialized with mock authentication");
-    // Set isAuthenticated to true for demo purposes
-    setIsAuthenticated(true);
-    setUser({ id: 'mock-user-id', email: 'demo@example.com' });
-    
-    // Comment out the actual Supabase auth checks for now
-    // This will be uncommented when Supabase is properly set up
-    /*
+    // Get the initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
       setUser(session?.user || null);
       setIsLoading(false);
+      
+      if (!session && window.location.pathname !== '/auth') {
+        navigate('/auth');
+      }
     });
 
+    // Set up the auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('Auth state changed:', event, session);
       setIsAuthenticated(!!session);
@@ -55,25 +52,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       subscription.unsubscribe();
     };
-    */
   }, [navigate]);
 
   const signOut = async () => {
     try {
-      // Mock sign out
-      console.log("Mock sign out");
-      setIsAuthenticated(false);
-      setUser(null);
+      await supabase.auth.signOut();
       navigate('/auth');
-      
-      // Actual Supabase sign out (commented out for now)
-      // await supabase.auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);
     }
   };
 
-  // No loading spinner needed with mock auth
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
