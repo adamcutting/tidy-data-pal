@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Database } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -14,6 +15,13 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    navigate('/');
+    return null;
+  }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +43,7 @@ const Auth = () => {
         if (error) throw error;
         navigate('/');
       }
-    } catch (error) {
+    } catch (error: any) {
       toast.error(error.message);
     } finally {
       setIsLoading(false);
