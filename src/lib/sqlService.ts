@@ -1,10 +1,11 @@
 
 import { DatabaseLoadRequest, DatabaseType, MySQLConfig, MSSQLConfig, DedupeProgress } from './types';
+import * as mssql from 'mssql';
 
-// Mock polling interval in ms (in a real implementation this would call an actual backend API)
+// Polling interval in ms for checking job status
 const POLLING_INTERVAL = 1500;
 
-// Mock function to load data from a database
+// Function to load data from a database
 export const loadDatabaseData = async (
   dbType: DatabaseType,
   config: MySQLConfig | MSSQLConfig,
@@ -12,9 +13,6 @@ export const loadDatabaseData = async (
   isTable: boolean,
   onProgressUpdate: (progress: DedupeProgress) => void
 ): Promise<any[]> => {
-  // In a real implementation, this would make an API call to a backend service
-  // For now, we'll simulate the process with a delay
-
   // Set initial progress state
   onProgressUpdate({
     status: 'connecting',
@@ -22,33 +20,120 @@ export const loadDatabaseData = async (
     statusMessage: `Connecting to ${dbType} database...`,
   });
 
+  try {
+    let data: any[] = [];
+
+    if (dbType === 'mssql') {
+      data = await loadFromMSSQL(config as MSSQLConfig, query, isTable, onProgressUpdate);
+    } else if (dbType === 'mysql') {
+      // For now, we'll use mock data for MySQL until we implement MySQL connectivity
+      // In a real implementation, this would use a MySQL client library
+      data = await mockMySQLData(query, onProgressUpdate);
+    }
+
+    // Final progress update
+    onProgressUpdate({
+      status: 'completed',
+      percentage: 100,
+      statusMessage: `Successfully loaded ${data.length} records from database.`,
+      recordsProcessed: data.length,
+      totalRecords: data.length
+    });
+
+    return data;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    onProgressUpdate({
+      status: 'failed',
+      percentage: 0,
+      statusMessage: `Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    throw error;
+  }
+};
+
+// Function to load data from SQL Server
+const loadFromMSSQL = async (
+  config: MSSQLConfig,
+  query: string,
+  isTable: boolean,
+  onProgressUpdate: (progress: DedupeProgress) => void
+): Promise<any[]> => {
+  try {
+    // Create connection configuration
+    const sqlConfig: mssql.config = {
+      user: config.user,
+      password: config.password,
+      server: config.server,
+      database: config.database,
+      port: config.port,
+      options: {
+        encrypt: config.options?.encrypt ?? true,
+        trustServerCertificate: config.options?.trustServerCertificate ?? true,
+      },
+      connectionTimeout: 30000,
+      requestTimeout: 60000,
+    };
+
+    // Connect to database
+    const pool = await mssql.connect(sqlConfig);
+    
+    // Update progress to loading
+    onProgressUpdate({
+      status: 'loading',
+      percentage: 30,
+      statusMessage: isTable ? 
+        `Loading data from table "${query}"...` : 
+        'Executing query and loading results...',
+    });
+
+    // Build the query
+    const sqlQuery = isTable ? `SELECT * FROM ${query}` : query;
+    
+    // Execute query
+    const result = await pool.request().query(sqlQuery);
+    
+    // Update progress
+    onProgressUpdate({
+      status: 'loading',
+      percentage: 70,
+      statusMessage: `Processing ${result.recordset.length} records...`,
+      recordsProcessed: result.recordset.length,
+      totalRecords: result.recordset.length
+    });
+
+    // Close the connection
+    await pool.close();
+    
+    return result.recordset;
+  } catch (error) {
+    console.error('MSSQL error:', error);
+    throw error;
+  }
+};
+
+// Function to load data from MySQL (mock implementation)
+const mockMySQLData = async (
+  query: string,
+  onProgressUpdate: (progress: DedupeProgress) => void
+): Promise<any[]> => {
   // Simulate connection delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
   // Update progress to loading
   onProgressUpdate({
     status: 'loading',
     percentage: 30,
-    statusMessage: isTable ? 
-      `Loading data from table "${query}"...` : 
-      'Executing query and loading results...',
+    statusMessage: `Loading data from MySQL...`,
   });
 
   // Simulate data loading delay
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
-  // Generate mock data based on the database type and config
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  // Generate mock data
   const mockData = generateMockData(query, 1000);
-
-  // Final progress update
-  onProgressUpdate({
-    status: 'completed',
-    percentage: 100,
-    statusMessage: `Successfully loaded ${mockData.length} records from database.`,
-    recordsProcessed: mockData.length,
-    totalRecords: mockData.length
-  });
-
+  
   return mockData;
 };
 
