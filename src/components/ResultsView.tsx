@@ -19,37 +19,84 @@ interface ResultsViewProps {
 const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
   const [deduplicatedCSV, setDeduplicatedCSV] = useState<string>('');
   const [flaggedCSV, setFlaggedCSV] = useState<string>('');
+  const [hasProcessedData, setHasProcessedData] = useState(false);
   
   useEffect(() => {
-    // Generate CSVs from both data sets
-    const deduplicated = convertToCSV(result.processedData);
-    const flagged = convertToCSV(result.flaggedData);
+    console.log("ResultsView received result:", result);
     
-    setDeduplicatedCSV(deduplicated);
-    setFlaggedCSV(flagged);
+    // Check if we have valid data to process
+    if (result && Array.isArray(result.processedData) && result.processedData.length > 0) {
+      try {
+        // Generate CSVs from both data sets
+        const deduplicated = convertToCSV(result.processedData);
+        const flagged = Array.isArray(result.flaggedData) && result.flaggedData.length > 0 
+          ? convertToCSV(result.flaggedData) 
+          : 'No flagged data available';
+        
+        setDeduplicatedCSV(deduplicated);
+        setFlaggedCSV(flagged);
+        setHasProcessedData(true);
+      } catch (error) {
+        console.error('Error generating CSV data:', error);
+        setHasProcessedData(false);
+      }
+    } else {
+      console.warn('No valid processed data available in results');
+      setHasProcessedData(false);
+    }
   }, [result]);
 
   const handleDownload = (format: DownloadFormat) => {
     const baseFileName = fileData.fileName.replace(/\.[^/.]+$/, '');
     
-    if (format === 'deduplicated') {
+    if (format === 'deduplicated' && deduplicatedCSV) {
       downloadCSV(deduplicatedCSV, `${baseFileName}_deduplicated.csv`);
-    } else if (format === 'flagged') {
+    } else if (format === 'flagged' && flaggedCSV) {
       downloadCSV(flaggedCSV, `${baseFileName}_flagged.csv`);
     }
   };
 
-  const percentReduction = Math.round((result.duplicateRows / result.originalRows) * 100);
+  // Use zero values as fallbacks for undefined properties
+  const originalRows = result?.originalRows || 0;
+  const uniqueRows = result?.uniqueRows || 0;
+  const duplicateRows = result?.duplicateRows || 0;
+  const percentReduction = originalRows > 0 ? Math.round((duplicateRows / originalRows) * 100) : 0;
   
   // Format processing time (convert ms to seconds with 2 decimal places)
-  const formattedProcessingTime = result.processingTimeMs 
+  const formattedProcessingTime = result?.processingTimeMs 
     ? (result.processingTimeMs / 1000).toFixed(2) 
     : 'N/A';
 
   // Calculate records per second
-  const recordsPerSecond = result.processingTimeMs && result.processingTimeMs > 0
-    ? Math.round(result.originalRows / (result.processingTimeMs / 1000))
+  const recordsPerSecond = result?.processingTimeMs && result.processingTimeMs > 0 && originalRows > 0
+    ? Math.round(originalRows / (result.processingTimeMs / 1000))
     : 0;
+
+  // Handle the case where we don't have processed data yet
+  if (!hasProcessedData) {
+    return (
+      <div className="w-full max-w-3xl mx-auto animate-fade-in">
+        <div className="bg-card rounded-lg border p-6 text-center">
+          <h3 className="text-xl font-medium mb-4">Processing Results</h3>
+          {result?.jobId ? (
+            <p className="text-muted-foreground">
+              Job ID: {result.jobId} <br/>
+              Your data is still being processed. The results will be available soon.
+            </p>
+          ) : (
+            <p className="text-muted-foreground">
+              No processed data available yet. This could be because:
+              <ul className="list-disc list-inside mt-2 text-left pl-4">
+                <li>The deduplication process is still running</li>
+                <li>There was an error during processing</li>
+                <li>The results format was unexpected</li>
+              </ul>
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-3xl mx-auto animate-fade-in">
@@ -58,7 +105,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
           <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
             <Calculator className="h-8 w-8 text-primary" />
           </div>
-          <h3 className="text-2xl font-bold">{result.uniqueRows}</h3>
+          <h3 className="text-2xl font-bold">{uniqueRows}</h3>
           <p className="text-muted-foreground">Unique Records</p>
           <p className="text-xs text-muted-foreground mt-2">
             {percentReduction}% reduction from original
@@ -70,13 +117,13 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
             <BarChart3 className="h-8 w-8 text-muted-foreground" />
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-2xl font-bold">{result.originalRows}</span>
+            <span className="text-2xl font-bold">{originalRows}</span>
             <ArrowRight className="h-5 w-5" />
-            <span className="text-2xl font-bold">{result.uniqueRows}</span>
+            <span className="text-2xl font-bold">{uniqueRows}</span>
           </div>
           <p className="text-muted-foreground">Total Records</p>
           <p className="text-xs text-muted-foreground mt-2">
-            {result.duplicateRows} duplicates removed
+            {duplicateRows} duplicates removed
           </p>
         </div>
         
@@ -108,19 +155,19 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
               </li>
               <li className="flex justify-between">
                 <span className="text-muted-foreground">Original records:</span>
-                <span>{result.originalRows}</span>
+                <span>{originalRows}</span>
               </li>
               <li className="flex justify-between">
                 <span className="text-muted-foreground">Unique records:</span>
-                <span>{result.uniqueRows}</span>
+                <span>{uniqueRows}</span>
               </li>
               <li className="flex justify-between">
                 <span className="text-muted-foreground">Duplicate records:</span>
-                <span>{result.duplicateRows}</span>
+                <span>{duplicateRows}</span>
               </li>
               <li className="flex justify-between">
                 <span className="text-muted-foreground">Duplicate clusters:</span>
-                <span>{result.clusters.filter(c => c.length > 1).length}</span>
+                <span>{result.clusters ? result.clusters.filter(c => c?.length > 1).length : 0}</span>
               </li>
               <li className="flex justify-between">
                 <span className="text-muted-foreground">Processing time:</span>
@@ -138,7 +185,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
           <div className="mb-6">
             <h4 className="font-medium mb-2">Preview</h4>
             <div className="bg-muted/40 rounded-md p-3 overflow-auto max-h-[200px] text-sm font-mono">
-              {result.processedData.length > 0 ? (
+              {result.processedData && result.processedData.length > 0 ? (
                 <pre>
                   {Object.keys(result.processedData[0]).join(', ')}{'\n'}
                   {result.processedData.slice(0, 5).map((row, i) => (
@@ -160,6 +207,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
               <Button 
                 onClick={() => handleDownload('deduplicated')}
                 className="flex items-center justify-center gap-2 btn-transition"
+                disabled={!deduplicatedCSV}
               >
                 <Download className="h-4 w-4" />
                 Deduplicated Data
@@ -169,6 +217,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
                 onClick={() => handleDownload('flagged')}
                 variant="outline"
                 className="flex items-center justify-center gap-2 btn-transition"
+                disabled={!flaggedCSV}
               >
                 <Filter className="h-4 w-4" />
                 Flagged Data
