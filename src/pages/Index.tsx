@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
@@ -116,11 +115,11 @@ const Index = () => {
         const worker = new Worker(new URL('@/lib/dataProcessingWorker.ts', import.meta.url), { type: 'module' });
         
         worker.onmessage = (event) => {
-          const { type, data } = event.data;
+          const { type, data, progress, result, error } = event.data;
           
           if (type === 'progress') {
-            // Update progress state
-            setProgress(data);
+            // Update progress state - changed to handle progress correctly
+            setProgress(progress);
           } else if (type === 'result') {
             // Handle finished processing (local mode)
             const processingTimeMs = Date.now() - startTime;
@@ -138,16 +137,16 @@ const Index = () => {
             toast.success(`Deduplication complete! Found ${data.duplicateRows} duplicate records.`);
           } else if (type === 'error') {
             // Handle worker errors
-            console.error('Worker error:', data);
+            console.error('Worker error:', error);
             setProgress({
               status: 'failed',
               percentage: 0,
               statusMessage: 'Deduplication process failed',
-              error: data
+              error: error
             });
             worker.terminate();
             setIsProcessing(false);
-            toast.error(`Error during deduplication process: ${data}`);
+            toast.error(`Error during deduplication process: ${error}`);
           } else if (type === 'splink-job') {
             // Handle Splink API job creation
             if (data.jobId) {
@@ -203,11 +202,11 @@ const Index = () => {
           toast.error(`Error during deduplication process: ${error.message}`);
         };
         
-        // Post message to worker to start processing
+        // Post message to worker to start processing - fixing the structure to match worker expectations
         worker.postMessage({
           type: 'deduplicate',
           data: {
-            fileData: fileData.data,
+            data: fileData.data,  // Changed from fileData to data
             mappedColumns,
             config: fullConfig,
             jobId,

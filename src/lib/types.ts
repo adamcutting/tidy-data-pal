@@ -175,6 +175,17 @@ export interface WorkerInitMessage {
   config: DedupeConfig;
 }
 
+export interface WorkerDeduplicateMessage {
+  type: 'deduplicate';
+  data: {
+    data: any[]; // Changed from fileData to data to match usage
+    mappedColumns: MappedColumn[];
+    config: DedupeConfig;
+    jobId: string;
+    optimizePostcodeProcessing: boolean;
+  };
+}
+
 export interface WorkerProgressMessage {
   type: 'progress';
   progress: DedupeProgress;
@@ -190,5 +201,20 @@ export interface WorkerErrorMessage {
   error: string;
 }
 
-export type WorkerOutboundMessage = WorkerProgressMessage | WorkerResultMessage | WorkerErrorMessage | WorkerReadyMessage;
-export type WorkerInboundMessage = WorkerInitMessage;
+export interface WorkerSplinkJobMessage {
+  type: 'splink-job';
+  data: {
+    jobId: string;
+    readyForSubmission: boolean;
+    totalRows: number;
+  };
+}
+
+export type WorkerOutboundMessage = 
+  | WorkerProgressMessage 
+  | WorkerResultMessage 
+  | WorkerErrorMessage 
+  | WorkerReadyMessage
+  | WorkerSplinkJobMessage;
+
+export type WorkerInboundMessage = WorkerInitMessage | WorkerDeduplicateMessage;
