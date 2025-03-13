@@ -1,7 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
-import { Download, FileCheck, Calculator, ArrowRight, BarChart3, Filter, Clock } from 'lucide-react';
+import { Download, FileCheck, Calculator, ArrowRight, BarChart3, Filter, Clock, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Spinner } from '@/components/ui/spinner';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -10,16 +11,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DedupeResult, FileData, DownloadFormat } from '@/lib/types';
 import { convertToCSV, downloadCSV } from '@/lib/dedupeService';
+import { pollDedupeStatus } from '@/lib/sqlService';
 
 interface ResultsViewProps {
   result: DedupeResult;
   fileData: FileData;
+  onRefreshStatus?: () => void;
 }
 
-const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
+const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData, onRefreshStatus }) => {
   const [deduplicatedCSV, setDeduplicatedCSV] = useState<string>('');
   const [flaggedCSV, setFlaggedCSV] = useState<string>('');
   const [hasProcessedData, setHasProcessedData] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   
   useEffect(() => {
     console.log("ResultsView received result:", result);
@@ -45,6 +51,36 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
       setHasProcessedData(false);
     }
   }, [result]);
+
+  // Start a timer for jobs that are still processing
+  useEffect(() => {
+    let interval: number | null = null;
+    
+    if (!hasProcessedData && result?.jobId) {
+      interval = window.setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval !== null) {
+        clearInterval(interval);
+      }
+    };
+  }, [hasProcessedData, result?.jobId]);
+
+  const handleRefresh = () => {
+    if (onRefreshStatus) {
+      setIsRefreshing(true);
+      setLastRefreshed(new Date());
+      onRefreshStatus();
+      
+      // Reset refreshing state after a short delay
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 1500);
+    }
+  };
 
   const handleDownload = (format: DownloadFormat) => {
     const baseFileName = fileData.fileName.replace(/\.[^/.]+$/, '');
@@ -72,26 +108,105 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData }) => {
     ? Math.round(originalRows / (result.processingTimeMs / 1000))
     : 0;
 
+  // Format elapsed time
+  const formatElapsedTime = () => {
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = elapsedSeconds % 60;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
   // Handle the case where we don't have processed data yet
   if (!hasProcessedData) {
     return (
       <div className="w-full max-w-3xl mx-auto animate-fade-in">
-        <div className="bg-card rounded-lg border p-6 text-center">
-          <h3 className="text-xl font-medium mb-4">Processing Results</h3>
+        <div className="bg-card rounded-lg border p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-medium">Processing Results</h3>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={isRefreshing || !onRefreshStatus}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+          
           {result?.jobId ? (
-            <p className="text-muted-foreground">
-              Job ID: {result.jobId} <br/>
-              Your data is still being processed. The results will be available soon.
-            </p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-2">
+                <Spinner size="sm" variant="default" showLabel={false} />
+                <p className="text-muted-foreground">
+                  Job ID: <span className="font-mono text-sm">{result.jobId}</span>
+                </p>
+              </div>
+              
+              <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span>Status:</span>
+                  <span className="font-medium text-primary">Processing</span>
+                </div>
+                
+                <div className="flex justify-between text-sm">
+                  <span>Started:</span>
+                  <span className="font-medium">{result?.startTime ? new Date(result.startTime).toLocaleTimeString() : 'Unknown'}</span>
+                </div>
+                
+                <div className="flex justify-between text-sm">
+                  <span>Elapsed time:</span>
+                  <span className="font-medium font-mono">{formatElapsedTime()}</span>
+                </div>
+                
+                <div className="flex justify-between text-sm">
+                  <span>Initial records:</span>
+                  <span className="font-medium">{originalRows > 0 ? originalRows.toLocaleString() : 'Loading...'}</span>
+                </div>
+                
+                <div className="flex justify-between text-sm">
+                  <span>Last refreshed:</span>
+                  <span className="font-medium">{lastRefreshed.toLocaleTimeString()}</span>
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <p className="text-sm mb-2">Progress (estimating...):</p>
+                <Progress value={15} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Your data is being processed. The results will be available soon.
+                  {originalRows > 10000 && " Processing large datasets may take a few minutes."}
+                </p>
+              </div>
+              
+              <div className="bg-amber-50 dark:bg-amber-950/20 p-3 rounded border border-amber-200 dark:border-amber-900 mt-4">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  The deduplication is still running. You can refresh to check the status or return to this page later.
+                </p>
+              </div>
+            </div>
           ) : (
-            <p className="text-muted-foreground">
-              No processed data available yet. This could be because:
-              <ul className="list-disc list-inside mt-2 text-left pl-4">
-                <li>The deduplication process is still running</li>
-                <li>There was an error during processing</li>
-                <li>The results format was unexpected</li>
-              </ul>
-            </p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-2">
+                <Spinner size="sm" variant="warning" showLabel={false} />
+                <p className="text-muted-foreground">
+                  Waiting for processing information...
+                </p>
+              </div>
+              
+              <p className="text-muted-foreground">
+                No job information available yet. This could be because:
+                <ul className="list-disc list-inside mt-2 text-left pl-4">
+                  <li>The deduplication process is still initializing</li>
+                  <li>There was an error during processing</li>
+                  <li>The results format was unexpected</li>
+                </ul>
+              </p>
+              
+              <Button onClick={handleRefresh} className="mt-4" disabled={isRefreshing || !onRefreshStatus}>
+                Check Status
+              </Button>
+            </div>
           )}
         </div>
       </div>

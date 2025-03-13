@@ -123,7 +123,8 @@ const Index = () => {
             
             const resultWithTime: DedupeResult = {
               ...result,
-              processingTimeMs
+              processingTimeMs,
+              startTime
             };
             
             setDedupeResult(resultWithTime);
@@ -154,7 +155,8 @@ const Index = () => {
               processedData: [],
               flaggedData: [],
               jobId: data.jobId,
-              processingTimeMs: initialProcessingTime
+              processingTimeMs: initialProcessingTime,
+              startTime
             };
             setDedupeResult(tempResult);
             
@@ -230,9 +232,30 @@ const Index = () => {
         statusMessage: `Refreshing status for job ${dedupeResult.jobId}...`
       }));
       
-      pollDedupeStatus(dedupeResult.jobId, setProgress);
+      pollDedupeStatus(dedupeResult.jobId, (updatedProgress) => {
+        setProgress(updatedProgress);
+        
+        if (updatedProgress.status === 'completed' && updatedProgress.result) {
+          setDedupeResult(prev => {
+            if (!prev) return updatedProgress.result;
+            
+            return {
+              ...prev,
+              ...updatedProgress.result,
+              processingTimeMs: prev.processingTimeMs || 0,
+              startTime: prev.startTime
+            };
+          });
+          
+          if (currentStep === 'progress') {
+            markStepCompleted('progress');
+            goToNextStep('results');
+            toast.success('Deduplication complete! View the results below.');
+          }
+        }
+      });
     }
-  }, [dedupeResult]);
+  }, [dedupeResult, currentStep]);
 
   const handleCancelJob = useCallback(async () => {
     if (dedupeResult?.jobId) {
@@ -320,7 +343,11 @@ const Index = () => {
         
       case 'results':
         return fileData && dedupeResult ? (
-          <ResultsView result={dedupeResult} fileData={fileData} />
+          <ResultsView 
+            result={dedupeResult} 
+            fileData={fileData} 
+            onRefreshStatus={handleRefreshStatus}
+          />
         ) : (
           <div className="text-center">
             <p>No results available yet</p>

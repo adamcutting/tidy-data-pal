@@ -4,7 +4,7 @@ export interface FileData {
   data: any[];
   rawData: string | ArrayBuffer | null;
   columns: string[];
-  totalRows?: number; // Added for large dataset support
+  totalRows?: number;
 }
 
 export interface MappedColumn {
@@ -29,19 +29,19 @@ export interface DedupeConfig {
   blockingColumns: string[];
   derivedBlockingRules?: DerivedBlockingRule[];
   threshold: number;
-  useSplink: boolean; // Will be set to true by default now
+  useSplink: boolean;
   splinkParams?: {
     termFrequencyAdjustments?: boolean;
     retainMatchingColumns?: boolean;
     retainIntermediateCalculations?: boolean;
     trainModel?: boolean;
     clusteringThreshold?: number;
-    uniqueIdColumn?: string; // Used for Splink's unique ID requirement
-    pythonPath?: string;     // Path to Python executable (only needed for local Splink)
-    enableLargeDatasetMode?: boolean; // Added for large dataset support
-    maxChunkSize?: number;   // Added for large dataset support
+    uniqueIdColumn?: string;
+    pythonPath?: string;
+    enableLargeDatasetMode?: boolean;
+    maxChunkSize?: number;
   };
-  splinkSettings?: SplinkSettings; // Added to support outputDir and other Splink settings
+  splinkSettings?: SplinkSettings;
   dataSource: 'file' | 'database';
   databaseConfig?: {
     databaseType: DatabaseType;
@@ -49,8 +49,8 @@ export interface DedupeConfig {
     query: string;
     isTable: boolean;
   };
-  enableStreamProcessing?: boolean; // Added for large dataset support
-  useWebWorker?: boolean; // Added for Web Worker support
+  enableStreamProcessing?: boolean;
+  useWebWorker?: boolean;
 }
 
 export interface SavedConfig {
@@ -64,12 +64,12 @@ export interface DedupeResult {
   originalRows: number;
   uniqueRows: number;
   duplicateRows: number;
-  clusters: any[];
+  clusters: any[][];
   processedData: any[];
-  flaggedData: any[]; // Data with duplicate flags
-  resultId?: string;  // Added for API result reference
-  jobId?: string;     // Added for progress tracking
-  processingTimeMs?: number; // Added for processing time tracking
+  flaggedData: any[];
+  jobId?: string;
+  processingTimeMs?: number;
+  startTime?: number;
 }
 
 export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results';
@@ -81,8 +81,8 @@ export interface SplinkSettings {
   apiKey?: string;
   pythonPath?: string;
   scriptPath?: string;
-  outputDir?: string;  // Added for specifying output directory
-  largeDatasetThreshold?: number; // Added for large dataset support
+  outputDir?: string;
+  largeDatasetThreshold?: number;
 }
 
 export interface MySQLConfig {
@@ -110,14 +110,14 @@ export type DatabaseType = 'mysql' | 'mssql';
 export interface DatabaseLoadRequest {
   databaseType: DatabaseType;
   connectionConfig: MySQLConfig | MSSQLConfig;
-  query: string;  // SQL query or table name
-  isTable: boolean; // Whether the query parameter is a table name or SQL query
+  query: string;
+  isTable: boolean;
 }
 
 export interface AutoDedupeRequest {
-  data: any[];  // Data to deduplicate
-  configId: string;  // ID of saved configuration to use
-  resultLocation?: string; // Optional folder path to save results
+  data: any[];
+  configId: string;
+  resultLocation?: string;
 }
 
 export interface AutoDedupeResponse {
@@ -143,9 +143,9 @@ export interface DedupeJob {
     duplicateRows: number;
   };
   resultLocation?: string;
-  chunked?: boolean; // Added for large dataset support
-  processedChunks?: number; // Added for large dataset support
-  totalChunks?: number; // Added for large dataset support
+  chunked?: boolean;
+  processedChunks?: number;
+  totalChunks?: number;
 }
 
 export type DedupeProgress = {
@@ -156,14 +156,13 @@ export type DedupeProgress = {
   recordsProcessed?: number;
   totalRecords?: number;
   error?: string;
-  chunked?: boolean; // Added for large dataset support
-  currentChunk?: number; // Added for large dataset support
-  totalChunks?: number; // Added for large dataset support
-  debugInfo?: string; // Added for detailed debugging information
-  stage?: string; // Added for more detailed progress tracking
+  chunked?: boolean;
+  currentChunk?: number;
+  totalChunks?: number;
+  debugInfo?: string;
+  stage?: string;
 };
 
-// Web Worker message types
 export interface WorkerReadyMessage {
   type: 'ready';
 }
@@ -178,7 +177,7 @@ export interface WorkerInitMessage {
 export interface WorkerDeduplicateMessage {
   type: 'deduplicate';
   data: {
-    data: any[]; // Changed from fileData to data to match usage
+    data: any[];
     mappedColumns: MappedColumn[];
     config: DedupeConfig;
     jobId: string;
