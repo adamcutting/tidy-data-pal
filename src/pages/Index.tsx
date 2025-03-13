@@ -327,10 +327,10 @@ const Index = () => {
               <Database className="h-8 w-8 text-[#1EAEDB]" />
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight animate-fade-in">
-                  Data HQ Dedupe
+                  Data HQ Match and Dedupe
                 </h1>
                 <p className="text-muted-foreground animate-fade-in text-gray-300">
-                  Streamline your data by removing duplicates with ease
+                  Streamline your data by matching and removing duplicates with ease
                 </p>
               </div>
             </div>
@@ -359,7 +359,7 @@ const Index = () => {
               &copy; {new Date().getFullYear()} Data HQ. All rights reserved.
             </p>
             <p className="text-xs text-gray-300">
-              A tool for powerful data deduplication
+              A tool for powerful data matching and deduplication
             </p>
           </div>
         </div>
