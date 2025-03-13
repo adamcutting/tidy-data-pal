@@ -84,10 +84,14 @@ export const formatDataForSplinkApi = async (
         }
         
         worker.postMessage({
-          type: 'init',
-          data,
-          mappedColumns,
-          config
+          type: 'deduplicate',
+          data: {
+            data,
+            mappedColumns,
+            config,
+            jobId: `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            optimizePostcodeProcessing: true
+          }
         });
         
       } catch (error) {

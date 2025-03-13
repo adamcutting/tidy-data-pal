@@ -42,8 +42,8 @@ ctx.addEventListener('message', (event: MessageEvent<WorkerInboundMessage>) => {
     }
   } else if (message.type === 'deduplicate') {
     try {
-      // Extract data from the message
-      const { fileData, mappedColumns, config, jobId, optimizePostcodeProcessing } = message.data;
+      // Fix the destructuring to correctly extract properties from message.data object
+      const { data: fileData, mappedColumns, config, jobId, optimizePostcodeProcessing } = message.data;
       
       // Send initial progress update
       sendProgress({
@@ -444,10 +444,11 @@ async function formatForSplinkApi(
   };
 }
 
-// Helper function to send progress updates
+// Helper function to send progress updates - fix type mismatch
 function sendProgress(progress: DedupeProgress) {
+  // Correctly format the message according to WorkerOutboundMessage type
   postMessage({
     type: 'progress',
-    data: progress
+    progress: progress // Use 'progress' property instead of 'data'
   } as WorkerOutboundMessage);
 }
