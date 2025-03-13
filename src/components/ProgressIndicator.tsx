@@ -171,7 +171,10 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
     <Card className="w-full">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
-          {isProcessing && <Spinner size="md" className={stalled ? "text-red-500" : "text-primary"} />}
+          {isProcessing && <Spinner 
+            size="md" 
+            variant={stalled ? "destructive" : "default"} 
+          />}
           <span>Deduplication Progress</span>
           <span className={`text-sm font-normal ${getStatusColor()}`}>
             {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
@@ -241,18 +244,41 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             </div>
           )}
           
-          {isProcessing && (
-            <div className={`p-3 rounded mt-2 border ${stalled ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'}`}>
+          {isProcessing && stalled && (
+            <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded mt-2 border border-red-200 dark:border-red-800">
               <div className="flex items-center gap-2 mb-2">
-                <Spinner size="sm" className={stalled ? "text-red-500" : "text-yellow-500"} />
-                <span className={stalled ? "text-red-700 dark:text-red-400 font-medium" : "text-yellow-700 dark:text-yellow-400 font-medium"}>
-                  {stalled ? "UI Thread Blocked" : "Processing in Background"}
+                <Spinner size="sm" variant="destructive" />
+                <span className="text-red-700 dark:text-red-400 font-medium">
+                  UI Thread Blocked
+                </span>
+              </div>
+              <p className="text-xs text-red-600 dark:text-red-500">
+                The application appears to be frozen. Processing large datasets may cause temporary unresponsiveness.
+              </p>
+              <div className="mt-2">
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  className="w-full text-xs"
+                  onClick={onCancel}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? 'Cancelling...' : 'Cancel Processing'}
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {isProcessing && !stalled && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded mt-2 border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-center gap-2 mb-2">
+                <Spinner size="sm" variant="warning" />
+                <span className="text-yellow-700 dark:text-yellow-400 font-medium">
+                  Processing in Background
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                {stalled 
-                  ? "The application appears to be frozen. Processing large datasets may cause temporary unresponsiveness." 
-                  : "The application is processing your data. You can continue to use other parts of the application during this time."}
+                The application is processing your data. You can continue to use other parts of the application during this time.
               </p>
             </div>
           )}

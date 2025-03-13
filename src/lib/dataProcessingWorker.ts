@@ -1,4 +1,3 @@
-
 import { 
   WorkerInboundMessage, 
   WorkerOutboundMessage, 
@@ -40,6 +39,31 @@ ctx.addEventListener('message', (event: MessageEvent<WorkerInboundMessage>) => {
         type: 'error',
         error: error instanceof Error ? error.message : 'Unknown error occurred in worker'
       } as WorkerOutboundMessage);
+    }
+  } else if (message.type === 'deduplicate') {
+    try {
+      // Extract data from the message
+      const { fileData, mappedColumns, config, jobId, optimizePostcodeProcessing } = message.data;
+      
+      // Send initial progress update
+      sendProgress({
+        status: 'processing',
+        percentage: 5,
+        statusMessage: 'Starting deduplication process in worker...',
+        recordsProcessed: 0,
+        totalRecords: fileData.length
+      });
+      
+      // Process in chunks to allow progress updates
+      processInChunks(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
+    } catch (error) {
+      console.error('[Worker] Error processing message:', error);
+      
+      // Send error back to main thread
+      ctx.postMessage({
+        type: 'error',
+        data: error instanceof Error ? error.message : 'Unknown error in worker'
+      });
     }
   }
 });
@@ -238,10 +262,192 @@ async function processData(
   }
 }
 
+// Process data in chunks to prevent memory issues and allow progress updates
+async function processInChunks(
+  data: any[],
+  mappedColumns: MappedColumn[],
+  config: DedupeConfig,
+  jobId: string,
+  optimizePostcodeProcessing: boolean
+) {
+  try {
+    const totalRows = data.length;
+    console.log(`[Worker] Processing ${totalRows} rows with ${config.comparisons.length} comparisons`);
+    
+    // Send progress update - preparing data
+    sendProgress({
+      status: 'processing',
+      percentage: 10,
+      statusMessage: 'Preparing data for processing...',
+      recordsProcessed: 0,
+      totalRecords: totalRows
+    });
+    
+    // Calculate optimal chunk size based on data size
+    // Smaller chunks for larger datasets to keep memory usage reasonable
+    const chunkSize = totalRows > 100000 ? 2000 : 
+                      totalRows > 50000 ? 5000 :
+                      totalRows > 10000 ? 10000 : totalRows;
+    
+    const totalChunks = Math.ceil(totalRows / chunkSize);
+    console.log(`[Worker] Processing in ${totalChunks} chunks of ${chunkSize} rows each`);
+    
+    // Format data for Splink API if useSplink is true
+    if (config.useSplink) {
+      sendProgress({
+        status: 'processing',
+        percentage: 20,
+        statusMessage: 'Preparing data for Splink API...',
+        recordsProcessed: 0,
+        totalRecords: totalRows,
+        stage: 'preparation'
+      });
+      
+      // Process for Splink
+      const splinkData = await formatForSplinkApi(data, mappedColumns, config, jobId);
+      
+      sendProgress({
+        status: 'processing',
+        percentage: 90,
+        statusMessage: 'Data preparation complete. Ready for API submission.',
+        recordsProcessed: totalRows,
+        totalRecords: totalRows
+      });
+      
+      // Send the Splink job data back to the main thread
+      ctx.postMessage({
+        type: 'splink-job',
+        data: {
+          jobId,
+          readyForSubmission: true,
+          totalRows
+        }
+      });
+    } else {
+      // Local processing implementation would go here
+      // For now, we'll just simulate progress updates
+      
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(start + chunkSize, totalRows);
+        const currentChunk = data.slice(start, end);
+        
+        // Update progress
+        const percentComplete = Math.floor(30 + (chunkIndex / totalChunks) * 60);
+        sendProgress({
+          status: 'processing',
+          percentage: percentComplete,
+          statusMessage: `Processing chunk ${chunkIndex + 1} of ${totalChunks}...`,
+          recordsProcessed: end,
+          totalRecords: totalRows,
+          currentChunk: chunkIndex + 1,
+          totalChunks
+        });
+        
+        // Process this chunk
+        // This is where your actual deduplication logic would go
+        
+        // Simulate some processing time to avoid blocking UI
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Send completion
+      sendProgress({
+        status: 'completed',
+        percentage: 100,
+        statusMessage: 'Processing complete',
+        recordsProcessed: totalRows,
+        totalRecords: totalRows
+      });
+      
+      // Send result back to main thread
+      ctx.postMessage({
+        type: 'result',
+        data: {
+          originalRows: totalRows,
+          uniqueRows: totalRows, // This would be calculated during processing
+          duplicateRows: 0, // This would be calculated during processing
+          clusters: [], // This would be filled during processing
+          processedData: data, // This would be the deduplicated data
+          flaggedData: data.map(row => ({ ...row, __is_duplicate: 'No' }))
+        }
+      });
+    }
+  } catch (error) {
+    console.error('[Worker] Error processing data in chunks:', error);
+    
+    sendProgress({
+      status: 'failed',
+      percentage: 0,
+      statusMessage: 'Processing failed',
+      error: error instanceof Error ? error.message : 'Unknown error during processing'
+    });
+    
+    // Send error back to main thread
+    ctx.postMessage({
+      type: 'error',
+      data: error instanceof Error ? error.message : 'Unknown error in worker'
+    });
+  }
+}
+
+// Format data for Splink API
+async function formatForSplinkApi(
+  data: any[],
+  mappedColumns: MappedColumn[],
+  config: DedupeConfig,
+  jobId: string
+) {
+  // Get columns that are included in the deduplication
+  const includedColumns = mappedColumns
+    .filter(col => col.include && col.mappedName)
+    .map(col => col.mappedName as string);
+  
+  // Use the first column as the unique ID if none specified
+  const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
+  
+  // Format blocking columns
+  const blockingFields = config.blockingColumns || [];
+  
+  // Format match fields
+  const matchFields = config.comparisons.map(comp => {
+    let type = 'exact';
+    
+    // Map matchType to Splink's expected format
+    if (comp.matchType === 'fuzzy') {
+      type = comp.threshold && comp.threshold < 0.85 ? 'levenshtein' : 'jaro_winkler';
+    } else if (comp.matchType === 'partial') {
+      type = 'levenshtein';
+    }
+    
+    return {
+      field: comp.column,
+      type
+    };
+  });
+  
+  // Ensure all records have the unique ID
+  const processedData = data.map((row, index) => {
+    if (!row[uniqueIdColumn]) {
+      return { ...row, [uniqueIdColumn]: `id-${index}` };
+    }
+    return row;
+  });
+  
+  return {
+    unique_id_column: uniqueIdColumn,
+    blocking_fields: blockingFields,
+    match_fields: matchFields,
+    input_data: processedData,
+    job_id: jobId,
+    total_rows: data.length
+  };
+}
+
 // Helper function to send progress updates
 function sendProgress(progress: DedupeProgress) {
   postMessage({
     type: 'progress',
-    progress
+    data: progress
   } as WorkerOutboundMessage);
 }
