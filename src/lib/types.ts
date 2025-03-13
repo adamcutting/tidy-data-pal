@@ -70,6 +70,7 @@ export interface DedupeResult {
   jobId?: string;
   processingTimeMs?: number;
   startTime?: number;
+  resultId?: string;
 }
 
 export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results';
@@ -161,6 +162,7 @@ export type DedupeProgress = {
   totalChunks?: number;
   debugInfo?: string;
   stage?: string;
+  result?: DedupeResult;
 };
 
 export interface WorkerReadyMessage {
