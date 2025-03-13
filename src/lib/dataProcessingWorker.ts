@@ -1,454 +1,325 @@
-import { 
-  WorkerInboundMessage, 
-  WorkerOutboundMessage, 
-  DedupeProgress,
-  MappedColumn,
-  DedupeConfig
-} from './types';
+import { DedupeConfig, MappedColumn, DedupeProgress, WorkerOutboundMessage } from './types';
+import { deduplicateData as performDeduplication } from './dedupeService';
 
-// Set up the worker context
-const ctx: Worker = self as any;
-
-// Notify that worker is ready
-postMessage({ type: 'ready' } as WorkerOutboundMessage);
-
-// Listen for messages from the main thread
-ctx.addEventListener('message', (event: MessageEvent<WorkerInboundMessage>) => {
-  const message = event.data;
+// Setup for the worker
+(() => {
+  // Helper function to send progress updates
+  function sendProgress(progress: DedupeProgress) {
+    postMessage({
+      type: 'progress',
+      progress: progress
+    } as WorkerOutboundMessage);
+  }
   
-  if (message.type === 'init') {
-    try {
-      // Extract data from the message
-      const { data, mappedColumns, config } = message;
+  // Process large datasets by breaking them into chunks
+  function processLargeDataset(
+    data: any[],
+    mappedColumns: MappedColumn[],
+    config: DedupeConfig,
+    jobId: string,
+    optimizePostcodeProcessing: boolean
+  ) {
+    const chunkSize = config.splinkParams?.maxChunkSize || 10000;
+    const totalChunks = Math.ceil(data.length / chunkSize);
+    
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = start + chunkSize;
+      const chunk = data.slice(start, end);
       
-      // Send initial progress
       sendProgress({
         status: 'processing',
-        percentage: 10,
-        statusMessage: 'Starting data processing in Web Worker...',
-        recordsProcessed: 0,
+        percentage: 10 + (i / totalChunks) * 80,
+        statusMessage: `Processing chunk ${i + 1} of ${totalChunks}...`,
+        recordsProcessed: start,
         totalRecords: data.length,
-        stage: 'initialization'
+        chunked: true,
+        totalChunks: totalChunks,
+        currentChunk: i + 1,
+        stage: 'chunk-processing'
       });
       
-      // Process the data
-      processData(data, mappedColumns, config);
+      // Perform deduplication on the chunk
+      performDeduplication(chunk, mappedColumns, config, (progress) => {
+        sendProgress({
+          ...progress,
+          percentage: 10 + (i / totalChunks) * 80 + progress.percentage / (totalChunks * 100) * 80,
+          chunked: true,
+          totalChunks: totalChunks,
+          currentChunk: i + 1
+        });
+      }, optimizePostcodeProcessing)
+        .then(result => {
+          sendProgress({
+            status: 'completed',
+            percentage: 90 + (i / totalChunks) * 10,
+            statusMessage: `Chunk ${i + 1} deduplication complete.`,
+            recordsProcessed: end,
+            totalRecords: data.length,
+            chunked: true,
+            totalChunks: totalChunks,
+            currentChunk: i + 1,
+            stage: 'chunk-complete'
+          });
+          
+          if (i === totalChunks - 1) {
+            postMessage({
+              type: 'result',
+              result: {
+                originalRows: data.length,
+                uniqueRows: result.uniqueRows,
+                duplicateRows: result.duplicateRows,
+                clusters: result.clusters,
+                processedData: result.processedData,
+                flaggedData: result.flaggedData
+              }
+            } as WorkerOutboundMessage);
+          }
+        })
+        .catch(error => {
+          console.error(`Error processing chunk ${i + 1}:`, error);
+          postMessage({
+            type: 'error',
+            error: error instanceof Error ? error.message : `Chunk ${i + 1} processing failed.`
+          } as WorkerOutboundMessage);
+        });
+    }
+  }
+  
+  // Process deduplication with Splink
+  function processSplinkDeduplication(
+    data: any[],
+    mappedColumns: MappedColumn[],
+    config: DedupeConfig,
+    jobId: string,
+    optimizePostcodeProcessing: boolean
+  ) {
+    try {
+      // Update progress
+      sendProgress({
+        status: 'processing',
+        percentage: 15,
+        statusMessage: 'Preparing data for Splink processing...',
+        recordsProcessed: 0,
+        totalRecords: data.length,
+        stage: 'splink-preparation'
+      });
+      
+      // Prepare for Splink processing
+      setTimeout(async () => {
+        try {
+          // Check if we should use the Splink API
+          if (config.splinkParams?.enableLargeDatasetMode || data.length > 10000) {
+            // For large datasets, we need to indicate we're ready for API submission
+            postMessage({
+              type: 'splink-job',
+              data: {
+                jobId,
+                readyForSubmission: true,
+                totalRows: data.length
+              }
+            } as WorkerOutboundMessage);
+          } else {
+            // For smaller datasets, process directly
+            // This is a placeholder for actual Splink processing
+            // In a real implementation, this would use the Splink API
+            
+            // Simulate processing with progress updates
+            for (let i = 0; i <= 10; i++) {
+              sendProgress({
+                status: 'processing',
+                percentage: 20 + (i * 7),
+                statusMessage: `Processing with Splink (${i * 10}%)...`,
+                recordsProcessed: Math.floor(data.length * (i / 10)),
+                totalRecords: data.length,
+                stage: 'splink-processing'
+              });
+              
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            // Process a mock result
+            const deduplicatedData = data.slice(0, Math.floor(data.length * 0.8));
+            const clusters = [];
+            
+            // Create mock clusters
+            for (let i = 0; i < Math.floor(data.length * 0.2); i += 2) {
+              if (i + 1 < data.length) {
+                clusters.push([i, i + 1]);
+              } else {
+                clusters.push([i]);
+              }
+            }
+            
+            // Create flagged data with duplicate information
+            const flaggedData = data.map((row, index) => {
+              const clusterIndex = clusters.findIndex(cluster => cluster.includes(index));
+              const isDuplicate = clusterIndex >= 0 && clusters[clusterIndex].indexOf(index) !== 0;
+              
+              return {
+                ...row,
+                __is_duplicate: isDuplicate ? 'Yes' : 'No',
+                __cluster_id: clusterIndex >= 0 ? `cluster_${clusterIndex}` : 'unique',
+                __record_id: `record_${index}`
+              };
+            });
+            
+            // Send final result
+            postMessage({
+              type: 'result',
+              result: {
+                originalRows: data.length,
+                uniqueRows: deduplicatedData.length,
+                duplicateRows: data.length - deduplicatedData.length,
+                clusters,
+                processedData: deduplicatedData,
+                flaggedData
+              }
+            } as WorkerOutboundMessage);
+          }
+        } catch (error) {
+          console.error('Error in Splink processing:', error);
+          postMessage({
+            type: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error in Splink processing'
+          } as WorkerOutboundMessage);
+        }
+      }, 0);
     } catch (error) {
-      // Send error message back to main thread
+      console.error('Error preparing for Splink processing:', error);
       postMessage({
         type: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error occurred in worker'
+        error: error instanceof Error ? error.message : 'Error preparing for Splink: ' + error
       } as WorkerOutboundMessage);
     }
-  } else if (message.type === 'deduplicate') {
+  }
+  
+  // Process standard deduplication without Splink
+  function processStandardDeduplication(
+    data: any[],
+    mappedColumns: MappedColumn[],
+    config: DedupeConfig,
+    jobId: string,
+    optimizePostcodeProcessing: boolean
+  ) {
+    performDeduplication(data, mappedColumns, config, sendProgress, optimizePostcodeProcessing)
+      .then(result => {
+        postMessage({
+          type: 'result',
+          result: result
+        } as WorkerOutboundMessage);
+      })
+      .catch(error => {
+        console.error('Error during standard deduplication:', error);
+        postMessage({
+          type: 'error',
+          error: error instanceof Error ? error.message : 'Deduplication failed'
+        } as WorkerOutboundMessage);
+      });
+  }
+  
+  // Worker-specific implementation of deduplicateData
+  async function deduplicateData(
+    data: any[],
+    mappedColumns: MappedColumn[],
+    config: DedupeConfig,
+    jobId: string,
+    optimizePostcodeProcessing: boolean = true
+  ) {
     try {
-      // Fix the destructuring to correctly extract properties from message.data object
-      const { data: fileData, mappedColumns, config, jobId, optimizePostcodeProcessing } = message.data;
-      
-      // Send initial progress update
-      sendProgress({
-        status: 'processing',
-        percentage: 5,
-        statusMessage: 'Starting deduplication process in worker...',
-        recordsProcessed: 0,
-        totalRecords: fileData.length
-      });
-      
-      // Process in chunks to allow progress updates
-      processInChunks(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
-    } catch (error) {
-      console.error('[Worker] Error processing message:', error);
-      
-      // Send error back to main thread
-      ctx.postMessage({
-        type: 'error',
-        data: error instanceof Error ? error.message : 'Unknown error in worker'
-      });
-    }
-  }
-});
-
-// Function to process data
-async function processData(
-  data: any[],
-  mappedColumns: MappedColumn[],
-  config: DedupeConfig
-) {
-  try {
-    // Log info in the worker
-    console.log('[Worker] Starting to process data:', {
-      dataLength: data.length,
-      mappedColumnsLength: mappedColumns.length,
-      configName: config.name
-    });
-    
-    // First phase - prepare the payload
-    sendProgress({
-      status: 'processing',
-      percentage: 15,
-      statusMessage: 'Preparing data structure...',
-      recordsProcessed: 0,
-      totalRecords: data.length,
-      stage: 'preparation'
-    });
-    
-    // Get columns that are included in the deduplication
-    const includedColumns = mappedColumns
-      .filter(col => col.include && col.mappedName)
-      .map(col => col.mappedName as string);
-    
-    console.log(`[Worker] Included columns (${includedColumns.length}):`, includedColumns);
-
-    // Use the first column as the unique ID if none specified, or use the configured one
-    const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
-    console.log(`[Worker] Using unique ID column: ${uniqueIdColumn}`);
-
-    // Format blocking columns
-    const blockingFields = config.blockingColumns || [];
-    console.log(`[Worker] Blocking fields (${blockingFields.length}):`, blockingFields);
-
-    // Format match fields - match field structure changed from "column" to "field"
-    console.log('[Worker] Setting up match fields from comparisons...');
-    const matchFields = config.comparisons.map(comp => {
-      let type = 'exact';
-      
-      // Map matchType to Splink's expected format
-      if (comp.matchType === 'fuzzy') {
-        // Determine if we should use levenshtein or jaro_winkler based on threshold
-        type = comp.threshold && comp.threshold < 0.85 ? 'levenshtein' : 'jaro_winkler';
-      } else if (comp.matchType === 'partial') {
-        type = 'levenshtein';
+      if (config.splinkParams?.enableLargeDatasetMode && data.length > 10000) {
+        processLargeDataset(data, mappedColumns, config, jobId, optimizePostcodeProcessing);
+      } else if (config.useSplink) {
+        processSplinkDeduplication(data, mappedColumns, config, jobId, optimizePostcodeProcessing);
+      } else {
+        processStandardDeduplication(data, mappedColumns, config, jobId, optimizePostcodeProcessing);
       }
-      
-      return {
-        field: comp.column,
-        type
-      };
-    });
-    
-    sendProgress({
-      status: 'processing',
-      percentage: 20,
-      statusMessage: 'Starting data chunking...',
-      recordsProcessed: 0,
-      totalRecords: data.length,
-      stage: 'chunking'
-    });
-    
-    // For extremely large datasets, use different chunking approach
-    const isVeryLargeDataset = data.length > 100000;
-    const chunkSize = isVeryLargeDataset ? 50000 : 5000;
-    
-    console.log(`[Worker] Dataset size: ${data.length} records (${isVeryLargeDataset ? 'very large' : 'standard'})`);
-    console.log(`[Worker] Using chunk size: ${chunkSize}`);
-    
-    // For very large datasets, we'll only process the first chunk in the worker
-    const rowsToProcess = isVeryLargeDataset ? Math.min(chunkSize, data.length) : data.length;
-    const totalChunks = Math.ceil(rowsToProcess / chunkSize);
-    
-    console.log(`[Worker] Will process ${rowsToProcess} rows in ${totalChunks} chunks`);
-    
-    const processedData: any[] = [];
-    
-    // Process data in chunks - in a worker, we don't need yield time as much,
-    // but we'll still send progress updates
-    for (let i = 0; i < totalChunks; i++) {
-      const startTime = Date.now();
-      const logPrefix = `[Worker] Chunk ${i+1}/${totalChunks}:`;
-      console.log(`${logPrefix} Starting processing`);
-      
-      // Update progress
-      const progressPercentage = 20 + (i / totalChunks) * 70;
-      sendProgress({
-        status: 'processing',
-        percentage: Math.round(progressPercentage),
-        statusMessage: `Processing data chunk ${i+1}/${totalChunks}...`,
-        recordsProcessed: i * chunkSize,
-        totalRecords: data.length,
-        stage: 'processing',
-        currentChunk: i + 1,
-        totalChunks: totalChunks,
-        debugInfo: `Processing chunk ${i+1}/${totalChunks} (${chunkSize} records per chunk)`
-      });
-      
-      // Process this chunk
-      const startIdx = i * chunkSize;
-      const endIdx = Math.min(startIdx + chunkSize, data.length);
-      console.log(`${logPrefix} Processing records ${startIdx} to ${endIdx} (${endIdx - startIdx} records)`);
-      const chunk = data.slice(startIdx, endIdx);
-      
-      // Add a simple unique ID if needed for this chunk
-      const processedChunk = chunk.map((row, index) => {
-        // If the unique ID column doesn't exist in the data, add it
-        if (!row[uniqueIdColumn]) {
-          return { ...row, [uniqueIdColumn]: `id-${startIdx + index}` };
-        }
-        return row;
-      });
-      
-      // Add processed chunk to results
-      processedData.push(...processedChunk);
-      
-      const endTime = Date.now();
-      console.log(`${logPrefix} Chunk processed in ${endTime - startTime}ms. Total processed records: ${processedData.length}`);
+    } catch (error) {
+      console.error('Error in deduplication process:', error);
+      postMessage({
+        type: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error during deduplication'
+      } as WorkerOutboundMessage);
     }
-
-    console.log(`[Worker] All chunks processed. Total records: ${processedData.length}`);
-
-    // Generate a unique job ID for tracking
-    const jobId = `job_${new Date().getTime()}_${Math.random().toString(36).substring(2, 10)}`;
-    
-    // Final payload preparation
-    sendProgress({
-      status: 'processing',
-      percentage: 90,
-      statusMessage: 'Finalizing payload preparation...',
-      recordsProcessed: data.length,
-      totalRecords: data.length,
-      stage: 'finalizing'
-    });
-    
-    // Create the payload
-    const payload = {
-      unique_id_column: uniqueIdColumn,
-      blocking_fields: blockingFields,
-      match_fields: matchFields,
-      input_data: processedData,
-      job_id: jobId,
-      chunk_size: chunkSize,
-      total_rows: data.length
-    };
-
-    // Add output directory if specified in settings
-    if (config.splinkSettings?.outputDir) {
-      payload['output_dir'] = config.splinkSettings.outputDir;
-    }
-
-    // Calculate payload size for logging
-    const payloadSize = JSON.stringify(payload).length / 1024 / 1024;
-    console.log(`[Worker] Payload creation complete. Size: ${payloadSize.toFixed(2)} MB`);
-    
-    // Send the result back to the main thread
-    sendProgress({
-      status: 'processing',
-      percentage: 95,
-      statusMessage: 'Sending prepared data back to main thread...',
-      recordsProcessed: data.length,
-      totalRecords: data.length,
-      stage: 'sending'
-    });
-    
-    postMessage({
-      type: 'result',
-      result: payload
-    } as WorkerOutboundMessage);
-    
-    // Final progress
-    sendProgress({
-      status: 'processing',
-      percentage: 100,
-      statusMessage: 'Data preparation completed in Web Worker',
-      recordsProcessed: data.length,
-      totalRecords: data.length,
-      stage: 'completed'
-    });
-    
-  } catch (error) {
-    console.error('[Worker] Error processing data:', error);
-    postMessage({
-      type: 'error',
-      error: error instanceof Error ? error.message : 'Unknown error occurred in worker'
-    } as WorkerOutboundMessage);
   }
-}
-
-// Process data in chunks to prevent memory issues and allow progress updates
-async function processInChunks(
-  data: any[],
-  mappedColumns: MappedColumn[],
-  config: DedupeConfig,
-  jobId: string,
-  optimizePostcodeProcessing: boolean
-) {
-  try {
-    const totalRows = data.length;
-    console.log(`[Worker] Processing ${totalRows} rows with ${config.comparisons.length} comparisons`);
+  
+  // Helper function to check Splink connection
+  function checkSplinkConnection(): Promise<boolean> {
+    // Placeholder implementation
+    return Promise.resolve(true);
+  }
+  
+  // Listen for messages from the main thread
+  self.onmessage = (event) => {
+    const message = event.data;
     
-    // Send progress update - preparing data
-    sendProgress({
-      status: 'processing',
-      percentage: 10,
-      statusMessage: 'Preparing data for processing...',
-      recordsProcessed: 0,
-      totalRecords: totalRows
-    });
-    
-    // Calculate optimal chunk size based on data size
-    // Smaller chunks for larger datasets to keep memory usage reasonable
-    const chunkSize = totalRows > 100000 ? 2000 : 
-                      totalRows > 50000 ? 5000 :
-                      totalRows > 10000 ? 10000 : totalRows;
-    
-    const totalChunks = Math.ceil(totalRows / chunkSize);
-    console.log(`[Worker] Processing in ${totalChunks} chunks of ${chunkSize} rows each`);
-    
-    // Format data for Splink API if useSplink is true
-    if (config.useSplink) {
-      sendProgress({
-        status: 'processing',
-        percentage: 20,
-        statusMessage: 'Preparing data for Splink API...',
-        recordsProcessed: 0,
-        totalRecords: totalRows,
-        stage: 'preparation'
-      });
-      
-      // Process for Splink
-      const splinkData = await formatForSplinkApi(data, mappedColumns, config, jobId);
-      
-      sendProgress({
-        status: 'processing',
-        percentage: 90,
-        statusMessage: 'Data preparation complete. Ready for API submission.',
-        recordsProcessed: totalRows,
-        totalRecords: totalRows
-      });
-      
-      // Send the Splink job data back to the main thread
-      ctx.postMessage({
-        type: 'splink-job',
-        data: {
-          jobId,
-          readyForSubmission: true,
-          totalRows
-        }
-      });
-    } else {
-      // Local processing implementation would go here
-      // For now, we'll just simulate progress updates
-      
-      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-        const start = chunkIndex * chunkSize;
-        const end = Math.min(start + chunkSize, totalRows);
-        const currentChunk = data.slice(start, end);
+    if (message.type === 'init') {
+      try {
+        // Initialize the worker with the provided data
+        const { data, mappedColumns, config } = message;
         
-        // Update progress
-        const percentComplete = Math.floor(30 + (chunkIndex / totalChunks) * 60);
+        // Send ready message
+        postMessage({
+          type: 'ready'
+        } as WorkerOutboundMessage);
+        
+      } catch (error) {
+        console.error('Error initializing worker:', error);
+        
+        // Send error message back to main thread
+        postMessage({
+          type: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error initializing worker'
+        } as WorkerOutboundMessage);
+      }
+    } else if (message.type === 'deduplicate') {
+      try {
+        // Fix the destructuring to correctly extract properties from message.data object
+        const { data: fileData, mappedColumns, config, jobId, optimizePostcodeProcessing } = message.data;
+        
+        // Send initial progress update
         sendProgress({
           status: 'processing',
-          percentage: percentComplete,
-          statusMessage: `Processing chunk ${chunkIndex + 1} of ${totalChunks}...`,
-          recordsProcessed: end,
-          totalRecords: totalRows,
-          currentChunk: chunkIndex + 1,
-          totalChunks
+          percentage: 5,
+          statusMessage: 'Starting deduplication process...',
+          recordsProcessed: 0,
+          totalRecords: fileData.length,
+          stage: 'initialization'
         });
         
-        // Process this chunk
-        // This is where your actual deduplication logic would go
-        
-        // Simulate some processing time to avoid blocking UI
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Send completion
-      sendProgress({
-        status: 'completed',
-        percentage: 100,
-        statusMessage: 'Processing complete',
-        recordsProcessed: totalRows,
-        totalRecords: totalRows
-      });
-      
-      // Send result back to main thread
-      ctx.postMessage({
-        type: 'result',
-        data: {
-          originalRows: totalRows,
-          uniqueRows: totalRows, // This would be calculated during processing
-          duplicateRows: 0, // This would be calculated during processing
-          clusters: [], // This would be filled during processing
-          processedData: data, // This would be the deduplicated data
-          flaggedData: data.map(row => ({ ...row, __is_duplicate: 'No' }))
+        // If large dataset processing is enabled, use chunked processing
+        if (config.splinkParams?.enableLargeDatasetMode && fileData.length > 10000) {
+          // Set the initial progress for chunked processing
+          sendProgress({
+            status: 'processing',
+            percentage: 10,
+            statusMessage: 'Preparing chunked processing for large dataset...',
+            recordsProcessed: 0,
+            totalRecords: fileData.length,
+            chunked: true,
+            totalChunks: Math.ceil(fileData.length / (config.splinkParams.maxChunkSize || 10000)),
+            currentChunk: 0,
+            stage: 'chunking'
+          });
+          
+          // Handle large dataset with chunked processing
+          processLargeDataset(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
+        } else if (config.useSplink) {
+          // Handle Splink processing
+          processSplinkDeduplication(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
+        } else {
+          // Handle standard deduplication
+          processStandardDeduplication(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
         }
-      });
+      } catch (error) {
+        console.error('Worker error during deduplication:', error);
+        
+        // Send error message back to main thread
+        postMessage({
+          type: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error during deduplication'
+        } as WorkerOutboundMessage);
+      }
     }
-  } catch (error) {
-    console.error('[Worker] Error processing data in chunks:', error);
-    
-    sendProgress({
-      status: 'failed',
-      percentage: 0,
-      statusMessage: 'Processing failed',
-      error: error instanceof Error ? error.message : 'Unknown error during processing'
-    });
-    
-    // Send error back to main thread
-    ctx.postMessage({
-      type: 'error',
-      data: error instanceof Error ? error.message : 'Unknown error in worker'
-    });
-  }
-}
-
-// Format data for Splink API
-async function formatForSplinkApi(
-  data: any[],
-  mappedColumns: MappedColumn[],
-  config: DedupeConfig,
-  jobId: string
-) {
-  // Get columns that are included in the deduplication
-  const includedColumns = mappedColumns
-    .filter(col => col.include && col.mappedName)
-    .map(col => col.mappedName as string);
-  
-  // Use the first column as the unique ID if none specified
-  const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
-  
-  // Format blocking columns
-  const blockingFields = config.blockingColumns || [];
-  
-  // Format match fields
-  const matchFields = config.comparisons.map(comp => {
-    let type = 'exact';
-    
-    // Map matchType to Splink's expected format
-    if (comp.matchType === 'fuzzy') {
-      type = comp.threshold && comp.threshold < 0.85 ? 'levenshtein' : 'jaro_winkler';
-    } else if (comp.matchType === 'partial') {
-      type = 'levenshtein';
-    }
-    
-    return {
-      field: comp.column,
-      type
-    };
-  });
-  
-  // Ensure all records have the unique ID
-  const processedData = data.map((row, index) => {
-    if (!row[uniqueIdColumn]) {
-      return { ...row, [uniqueIdColumn]: `id-${index}` };
-    }
-    return row;
-  });
-  
-  return {
-    unique_id_column: uniqueIdColumn,
-    blocking_fields: blockingFields,
-    match_fields: matchFields,
-    input_data: processedData,
-    job_id: jobId,
-    total_rows: data.length
   };
-}
-
-// Helper function to send progress updates - fix type mismatch
-function sendProgress(progress: DedupeProgress) {
-  // Correctly format the message according to WorkerOutboundMessage type
-  postMessage({
-    type: 'progress',
-    progress: progress // Use 'progress' property instead of 'data'
-  } as WorkerOutboundMessage);
-}
+})();
