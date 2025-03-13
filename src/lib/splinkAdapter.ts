@@ -129,7 +129,7 @@ export const formatDataForSplinkApi = async (
     
     console.log(`Included columns (${includedColumns.length}):`, includedColumns);
 
-    // Use the first column as the unique ID if none specified, or use the configured one
+    // Use the configured uniqueIdColumn if specified, otherwise use the first column
     const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
     console.log(`Using unique ID column: ${uniqueIdColumn}`);
 

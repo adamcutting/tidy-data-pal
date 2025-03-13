@@ -89,7 +89,10 @@ const Index = () => {
     const fullConfig: DedupeConfigType = {
       ...config,
       dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
-      useSplink: true, // Always use Splink
+      useSplink: true,
+      splinkParams: {
+        ...config.splinkParams,
+      }
     };
     
     setDedupeConfig(fullConfig);
@@ -162,13 +165,16 @@ const Index = () => {
           pollDedupeStatus(data.jobId, (progressUpdate) => {
             setProgress(progressUpdate);
             
-            if (progressUpdate.status === 'completed') {
+            if (progressUpdate.status === 'completed' && progressUpdate.result) {
               const totalProcessingTime = Date.now() - startTime;
-              setDedupeResult(prev => prev ? {
-                ...prev,
-                processingTimeMs: totalProcessingTime
-              } : null);
               
+              const completeResult: DedupeResult = {
+                ...progressUpdate.result,
+                processingTimeMs: totalProcessingTime,
+                startTime
+              };
+              
+              setDedupeResult(completeResult);
               markStepCompleted('progress');
               goToNextStep('results');
               worker.terminate();
