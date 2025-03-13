@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -70,6 +71,7 @@ export interface DedupeResult {
   jobId?: string;
   processingTimeMs?: number;
   startTime?: number;
+  resultId?: string; // Added this property to fix the type error
 }
 
 export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results';
@@ -161,6 +163,7 @@ export type DedupeProgress = {
   totalChunks?: number;
   debugInfo?: string;
   stage?: string;
+  result?: DedupeResult; // Added this property to fix the type error
 };
 
 export interface WorkerReadyMessage {

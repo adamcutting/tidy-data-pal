@@ -388,7 +388,6 @@ export const processSplinkResponse = (
       clusters: groupDataIntoClusters(cluster_data),
       processedData: cluster_data,
       flaggedData: createFlaggedData(originalData, cluster_data),
-      resultId: new Date().getTime().toString(),
       jobId: apiResponse.job_id
     };
   }
