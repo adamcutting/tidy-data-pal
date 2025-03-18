@@ -6,27 +6,40 @@ const DEFAULT_SPLINK_SETTINGS: SplinkSettings = {
   apiUrl: 'http://localhost:5000/api/deduplicate', // Default to local development server
 };
 
-// Get Splink settings from localStorage or use defaults
-export const getSplinkSettings = (): SplinkSettings => {
-  const settingsJson = localStorage.getItem('splink-settings');
-  if (!settingsJson) return DEFAULT_SPLINK_SETTINGS;
-  
-  try {
-    return JSON.parse(settingsJson);
-  } catch (e) {
-    console.error('Error parsing Splink settings:', e);
-    return DEFAULT_SPLINK_SETTINGS;
+// Modified to work in both browser and worker contexts
+export const getSplinkSettings = (providedSettings?: SplinkSettings): SplinkSettings => {
+  // If we have provided settings (from worker context), use those
+  if (providedSettings) {
+    return providedSettings;
   }
+  
+  // Only try localStorage in browser context
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const settingsJson = localStorage.getItem('splink-settings');
+    if (!settingsJson) return DEFAULT_SPLINK_SETTINGS;
+    
+    try {
+      return JSON.parse(settingsJson);
+    } catch (e) {
+      console.error('Error parsing Splink settings:', e);
+      return DEFAULT_SPLINK_SETTINGS;
+    }
+  }
+  
+  // Default case for worker context
+  return DEFAULT_SPLINK_SETTINGS;
 };
 
 // Save Splink settings to localStorage
 export const saveSplinkSettings = (settings: SplinkSettings): void => {
-  localStorage.setItem('splink-settings', JSON.stringify(settings));
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.setItem('splink-settings', JSON.stringify(settings));
+  }
 };
 
 // Test Splink API connection
-export const testSplinkConnection = async (): Promise<boolean> => {
-  const splinkSettings = getSplinkSettings();
+export const testSplinkConnection = async (providedSettings?: SplinkSettings): Promise<boolean> => {
+  const splinkSettings = getSplinkSettings(providedSettings);
   try {
     // Use a proper test endpoint instead of a HEAD request
     const testUrl = splinkSettings.apiUrl ? 
@@ -212,25 +225,38 @@ export const saveConfiguration = (config: DedupeConfig): SavedConfig => {
     savedConfigs.push(newConfig);
   }
   
-  // Save to localStorage
-  localStorage.setItem('dedupe-configurations', JSON.stringify(savedConfigs));
+  // Save to localStorage - only in browser context
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.setItem('dedupe-configurations', JSON.stringify(savedConfigs));
+  }
   
   return newConfig;
 };
 
 export const getConfigurations = (): SavedConfig[] => {
-  const configsJson = localStorage.getItem('dedupe-configurations');
-  if (!configsJson) return [];
-  
-  try {
-    return JSON.parse(configsJson);
-  } catch (e) {
-    console.error('Error parsing saved configurations:', e);
-    return [];
+  // Only try localStorage in browser context
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const configsJson = localStorage.getItem('dedupe-configurations');
+    if (!configsJson) return [];
+    
+    try {
+      return JSON.parse(configsJson);
+    } catch (e) {
+      console.error('Error parsing saved configurations:', e);
+      return [];
+    }
   }
+  
+  // Default for worker context
+  return [];
 };
 
 export const deleteConfiguration = (configId: string): void => {
+  // Only operate in browser context
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  
   const configs = getConfigurations();
   const updatedConfigs = configs.filter(config => config.id !== configId);
   localStorage.setItem('dedupe-configurations', JSON.stringify(updatedConfigs));
@@ -315,7 +341,8 @@ export const deduplicateData = async (
   mappedColumns: MappedColumn[],
   config: DedupeConfig,
   onProgress?: (progress: DedupeProgress) => void,
-  optimizePostcodeProcessing: boolean = true
+  optimizePostcodeProcessing: boolean = true,
+  providedSettings?: SplinkSettings
 ): Promise<DedupeResult> => {
   console.log('Deduplicating with config:', config);
   console.log('Postcode optimization enabled:', optimizePostcodeProcessing);
@@ -352,7 +379,7 @@ export const deduplicateData = async (
       
       try {
         // First check if Splink API is available
-        const isApiAvailable = await testSplinkConnection();
+        const isApiAvailable = await testSplinkConnection(providedSettings);
         
         if (!isApiAvailable) {
           if (onProgress) {
@@ -368,7 +395,7 @@ export const deduplicateData = async (
         }
         
         // If API is available, use Splink with postcode optimization
-        result = await deduplicateWithSplink(data, mappedColumns, config, onProgress, optimizePostcodeProcessing);
+        result = await deduplicateWithSplink(data, mappedColumns, config, onProgress, optimizePostcodeProcessing, providedSettings);
       } catch (error) {
         console.warn('Failed to use Splink, falling back to local implementation:', error);
         if (onProgress) {
@@ -426,10 +453,11 @@ export const deduplicateWithSplink = async (
   mappedColumns: MappedColumn[],
   config: DedupeConfig,
   onProgress?: (progress: DedupeProgress) => void,
-  optimizePostcodeProcessing: boolean = true
+  optimizePostcodeProcessing: boolean = true,
+  providedSettings?: SplinkSettings
 ): Promise<DedupeResult> => {
-  // Get Splink settings from localStorage or use defaults
-  const splinkSettings = getSplinkSettings();
+  // Get Splink settings from provided settings or localStorage
+  const splinkSettings = getSplinkSettings(providedSettings);
   
   if (!splinkSettings.apiUrl) {
     throw new Error('Splink API URL is not configured');
@@ -858,3 +886,4 @@ export const downloadCSV = (csvData: string, fileName: string): void => {
   link.click();
   document.body.removeChild(link);
 };
+

@@ -1,5 +1,5 @@
 
-import { DedupeConfig, MappedColumn, DedupeProgress, WorkerOutboundMessage } from './types';
+import { DedupeConfig, MappedColumn, DedupeProgress, WorkerOutboundMessage, SplinkSettings } from './types';
 import { deduplicateData as performDeduplication } from './dedupeService';
 
 // Setup for the worker
@@ -18,7 +18,8 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     mappedColumns: MappedColumn[],
     config: DedupeConfig,
     jobId: string,
-    optimizePostcodeProcessing: boolean
+    optimizePostcodeProcessing: boolean,
+    splinkSettings?: SplinkSettings
   ) {
     const chunkSize = config.splinkParams?.maxChunkSize || 10000;
     const totalChunks = Math.ceil(data.length / chunkSize);
@@ -40,7 +41,7 @@ import { deduplicateData as performDeduplication } from './dedupeService';
         stage: 'chunk-processing'
       });
       
-      // Perform deduplication on the chunk
+      // Perform deduplication on the chunk, passing splinkSettings
       performDeduplication(chunk, mappedColumns, config, (progress) => {
         sendProgress({
           ...progress,
@@ -49,7 +50,7 @@ import { deduplicateData as performDeduplication } from './dedupeService';
           totalChunks: totalChunks,
           currentChunk: i + 1
         });
-      }, optimizePostcodeProcessing)
+      }, optimizePostcodeProcessing, splinkSettings)
         .then(result => {
           // Send progress update for chunk completion
           sendProgress({
@@ -103,7 +104,8 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     mappedColumns: MappedColumn[],
     config: DedupeConfig,
     jobId: string,
-    optimizePostcodeProcessing: boolean
+    optimizePostcodeProcessing: boolean,
+    splinkSettings?: SplinkSettings
   ) {
     try {
       // Update progress
@@ -227,7 +229,8 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     mappedColumns: MappedColumn[],
     config: DedupeConfig,
     jobId: string,
-    optimizePostcodeProcessing: boolean
+    optimizePostcodeProcessing: boolean,
+    splinkSettings?: SplinkSettings
   ) {
     performDeduplication(data, mappedColumns, config, (progress) => {
       // Ensure the final progress update includes the result if it's complete
@@ -238,7 +241,7 @@ import { deduplicateData as performDeduplication } from './dedupeService';
       } else {
         sendProgress(progress);
       }
-    }, optimizePostcodeProcessing)
+    }, optimizePostcodeProcessing, splinkSettings)
       .then(result => {
         // Send a final progress update with the result
         sendProgress({
@@ -272,15 +275,16 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     mappedColumns: MappedColumn[],
     config: DedupeConfig,
     jobId: string,
-    optimizePostcodeProcessing: boolean = true
+    optimizePostcodeProcessing: boolean = true,
+    splinkSettings?: SplinkSettings
   ) {
     try {
       if (config.splinkParams?.enableLargeDatasetMode && data.length > 10000) {
-        processLargeDataset(data, mappedColumns, config, jobId, optimizePostcodeProcessing);
+        processLargeDataset(data, mappedColumns, config, jobId, optimizePostcodeProcessing, splinkSettings);
       } else if (config.useSplink) {
-        processSplinkDeduplication(data, mappedColumns, config, jobId, optimizePostcodeProcessing);
+        processSplinkDeduplication(data, mappedColumns, config, jobId, optimizePostcodeProcessing, splinkSettings);
       } else {
-        processStandardDeduplication(data, mappedColumns, config, jobId, optimizePostcodeProcessing);
+        processStandardDeduplication(data, mappedColumns, config, jobId, optimizePostcodeProcessing, splinkSettings);
       }
     } catch (error) {
       console.error('Error in deduplication process:', error);
@@ -323,7 +327,14 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     } else if (message.type === 'deduplicate') {
       try {
         // Fix the destructuring to correctly extract properties from message.data object
-        const { data: fileData, mappedColumns, config, jobId, optimizePostcodeProcessing } = message.data;
+        const { 
+          data: fileData, 
+          mappedColumns, 
+          config, 
+          jobId, 
+          optimizePostcodeProcessing,
+          splinkSettings // Extract Splink settings from message
+        } = message.data;
         
         // Send initial progress update
         sendProgress({
@@ -351,13 +362,13 @@ import { deduplicateData as performDeduplication } from './dedupeService';
           });
           
           // Handle large dataset with chunked processing
-          processLargeDataset(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
+          processLargeDataset(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing, splinkSettings);
         } else if (config.useSplink) {
           // Handle Splink processing
-          processSplinkDeduplication(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
+          processSplinkDeduplication(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing, splinkSettings);
         } else {
           // Handle standard deduplication
-          processStandardDeduplication(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing);
+          processStandardDeduplication(fileData, mappedColumns, config, jobId, optimizePostcodeProcessing, splinkSettings);
         }
       } catch (error) {
         console.error('Worker error during deduplication:', error);

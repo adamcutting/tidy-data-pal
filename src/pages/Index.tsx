@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
@@ -18,11 +19,13 @@ import {
   DedupeProgress,
   DatabaseType,
   MySQLConfig,
-  MSSQLConfig
+  MSSQLConfig,
+  SplinkSettings
 } from '@/lib/types';
 import { loadDatabaseData, pollDedupeStatus } from '@/lib/sqlService';
 import { cancelSplinkJob } from '@/lib/splinkAdapter';
 import { storeJobReference, markJobCompleted } from '@/lib/apiService';
+import { getSplinkSettings } from '@/lib/dedupeService';
 
 const Index = () => {
   const [currentStep, setCurrentStep] = useState<Step>('upload');
@@ -127,6 +130,10 @@ const Index = () => {
       });
       
       const worker = new Worker(new URL('@/lib/dataProcessingWorker.ts', import.meta.url), { type: 'module' });
+      
+      // Get splink settings from browser context (localStorage) 
+      // to pass to the worker, which doesn't have localStorage access
+      const splinkSettings: SplinkSettings = getSplinkSettings();
       
       worker.onmessage = (event) => {
         const { type, progress, result, error, data } = event.data;
@@ -267,7 +274,8 @@ const Index = () => {
           mappedColumns,
           config: fullConfig,
           jobId,
-          optimizePostcodeProcessing: true
+          optimizePostcodeProcessing: true,
+          splinkSettings // Pass splinkSettings from main thread to worker
         }
       });
     }
