@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -99,6 +100,12 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
       dataSource: 'file',
       useWebWorker: true // Enable Web Workers by default
     }
+  });
+
+  // Add the missing useFieldArray for comparisons
+  const { fields: comparisonFields, append: comparisonAppend, remove: comparisonRemove } = useFieldArray({
+    control: form.control,
+    name: "comparisons"
   });
 
   // Update uniqueIdColumn when prop changes
