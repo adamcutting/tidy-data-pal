@@ -1,4 +1,3 @@
-
 import { 
   DatabaseLoadRequest, 
   AutoDedupeRequest, 
@@ -6,7 +5,8 @@ import {
   DedupeResult, 
   SavedConfig,
   DedupeJob,
-  DatabaseType
+  DatabaseType,
+  ActiveJob
 } from './types';
 import { deduplicateData } from './dedupeService';
 import { getConfigurations } from './dedupeService';
@@ -129,6 +129,26 @@ export const getDedupeJobs = async (): Promise<DedupeJob[]> => {
 };
 
 /**
+ * Get list of active deduplication jobs
+ * @returns Promise with array of active jobs
+ */
+export const getActiveJobs = async (): Promise<ActiveJob[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/dedupe/jobs/active`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to retrieve active jobs: ${errorText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting active jobs:', error);
+    throw error;
+  }
+};
+
+/**
  * Run local deduplication using a saved configuration without API
  * This is used for client-side processing
  * @param data Data to deduplicate
@@ -157,5 +177,65 @@ export const runLocalDedupe = async (data: any[], configId: string): Promise<Ded
   } catch (error) {
     console.error('Error running local deduplication:', error);
     throw error;
+  }
+};
+
+/**
+ * Store job reference in local storage for tracking
+ * @param jobId ID of the job
+ * @param metadata Additional job metadata
+ */
+export const storeJobReference = (jobId: string, metadata: Record<string, any> = {}) => {
+  try {
+    // Get existing jobs
+    const storedJobs = localStorage.getItem('activeJobs');
+    const activeJobs = storedJobs ? JSON.parse(storedJobs) : [];
+    
+    // Add new job with timestamp
+    activeJobs.push({
+      jobId,
+      startTime: Date.now(),
+      ...metadata
+    });
+    
+    // Store back to localStorage
+    localStorage.setItem('activeJobs', JSON.stringify(activeJobs));
+  } catch (error) {
+    console.error('Error storing job reference:', error);
+  }
+};
+
+/**
+ * Retrieve all locally tracked jobs
+ * @returns Array of tracked jobs
+ */
+export const getLocalJobs = (): ActiveJob[] => {
+  try {
+    const storedJobs = localStorage.getItem('activeJobs');
+    return storedJobs ? JSON.parse(storedJobs) : [];
+  } catch (error) {
+    console.error('Error retrieving local jobs:', error);
+    return [];
+  }
+};
+
+/**
+ * Mark a job as completed or remove it from tracking
+ * @param jobId ID of the job to mark as completed
+ */
+export const markJobCompleted = (jobId: string) => {
+  try {
+    const storedJobs = localStorage.getItem('activeJobs');
+    if (!storedJobs) return;
+    
+    let activeJobs = JSON.parse(storedJobs);
+    
+    // Filter out the completed job
+    activeJobs = activeJobs.filter((job: any) => job.jobId !== jobId);
+    
+    // Update localStorage
+    localStorage.setItem('activeJobs', JSON.stringify(activeJobs));
+  } catch (error) {
+    console.error('Error marking job as completed:', error);
   }
 };

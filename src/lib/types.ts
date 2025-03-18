@@ -1,4 +1,3 @@
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -74,7 +73,7 @@ export interface DedupeResult {
   resultId?: string;
 }
 
-export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results';
+export type Step = 'upload' | 'mapping' | 'config' | 'progress' | 'results' | 'jobs';
 
 export type DownloadFormat = 'deduplicated' | 'flagged';
 
@@ -150,6 +149,16 @@ export interface DedupeJob {
   totalChunks?: number;
 }
 
+export interface ActiveJob {
+  jobId: string;
+  startTime: number;
+  status?: 'running' | 'completed' | 'failed' | 'cancelled';
+  progress?: DedupeProgress;
+  configName?: string;
+  dataSource?: string;
+  rowCount?: number;
+}
+
 export type DedupeProgress = {
   status: 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering' | 'completed' | 'failed' | 'cancelled';
   percentage: number;
@@ -163,7 +172,7 @@ export type DedupeProgress = {
   totalChunks?: number;
   debugInfo?: string;
   stage?: string;
-  result?: DedupeResult;  // Add this property to link progress updates with results
+  result?: DedupeResult;
 };
 
 export interface WorkerReadyMessage {

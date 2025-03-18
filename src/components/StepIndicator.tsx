@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { cn } from '@/lib/utils';
+import { FileText, Columns, Settings, Activity, CheckCircle, AlertTriangle, Timer } from 'lucide-react';
 import { Step } from '@/lib/types';
 
 interface StepIndicatorProps {
@@ -9,72 +9,58 @@ interface StepIndicatorProps {
   completedSteps: Set<Step>;
 }
 
-const StepIndicator: React.FC<StepIndicatorProps> = ({
-  currentStep,
-  setStep,
-  completedSteps,
+const StepIndicator: React.FC<StepIndicatorProps> = ({ 
+  currentStep, 
+  setStep, 
+  completedSteps 
 }) => {
-  const steps: { key: Step; label: string }[] = [
-    { key: 'upload', label: 'Upload Data' },
-    { key: 'mapping', label: 'Map Columns' },
-    { key: 'config', label: 'Configure' },
-    { key: 'progress', label: 'Processing' },
-    { key: 'results', label: 'Results' },
+  const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
+    { id: 'upload', label: 'Upload Data', icon: <FileText className="h-5 w-5" /> },
+    { id: 'mapping', label: 'Map Columns', icon: <Columns className="h-5 w-5" /> },
+    { id: 'config', label: 'Configure', icon: <Settings className="h-5 w-5" /> },
+    { id: 'progress', label: 'Process', icon: <Activity className="h-5 w-5" /> },
+    { id: 'results', label: 'Results', icon: <CheckCircle className="h-5 w-5" /> },
+    { id: 'jobs', label: 'Running Jobs', icon: <Timer className="h-5 w-5" /> },
   ];
 
-  return (
-    <div className="w-full max-w-3xl mx-auto mb-8">
-      <div className="flex justify-between items-center relative">
-        {/* Progress bar */}
-        <div className="absolute h-0.5 bg-muted inset-x-0 top-1/2 -translate-y-1/2" />
-        <div 
-          className="absolute h-0.5 bg-primary inset-y-1/2 -translate-y-1/2 transition-all duration-500 ease-in-out"
-          style={{ 
-            width: `${
-              (steps.findIndex(s => s.key === currentStep) / (steps.length - 1)) * 100
-            }%` 
-          }} 
-        />
+  const handleStepClick = (step: Step) => {
+    // Only allow navigation to completed steps or the jobs step
+    if (completedSteps.has(step) || step === 'jobs') {
+      setStep(step);
+    }
+  };
 
-        {/* Steps */}
-        {steps.map((step, index) => {
-          const isCompleted = completedSteps.has(step.key);
-          const isCurrent = currentStep === step.key;
-          const isClickable = isCompleted || 
-            [...completedSteps].some(s => steps.findIndex(st => st.key === s) === index - 1);
-          
-          return (
-            <div key={step.key} className="z-10 flex flex-col items-center">
-              <button
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 focus-ring",
-                  isCompleted || isCurrent 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-muted text-muted-foreground",
-                  isClickable && !isCurrent
-                    ? "hover:scale-110 cursor-pointer"
-                    : !isClickable && !isCurrent
-                    ? "opacity-50 cursor-not-allowed"
-                    : ""
-                )}
-                onClick={() => isClickable && setStep(step.key)}
-                disabled={!isClickable}
-              >
-                {index + 1}
-              </button>
-              <span 
-                className={cn(
-                  "mt-2 text-sm font-medium transition-colors duration-300",
-                  isCurrent ? "text-primary" : "text-muted-foreground"
-                )}
-              >
-                {step.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+  return (
+    <nav className="flex flex-wrap justify-center gap-2">
+      {steps.map((step, index) => {
+        const isCompleted = completedSteps.has(step.id);
+        const isCurrent = currentStep === step.id;
+        
+        return (
+          <button
+            key={step.id}
+            onClick={() => handleStepClick(step.id)}
+            className={`
+              relative flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg
+              transition-all duration-200 
+              ${isCompleted || step.id === 'jobs' ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}
+              ${isCurrent ? 'bg-primary text-primary-foreground font-medium shadow-md' : 
+                isCompleted || step.id === 'jobs' ? 'bg-secondary hover:bg-secondary/80' : 'bg-muted'}
+            `}
+            disabled={!isCompleted && step.id !== 'jobs'}
+          >
+            {step.icon}
+            <span className="hidden sm:inline">{step.label}</span>
+            
+            {index < steps.length - 1 && (
+              <div className="hidden sm:block absolute right-0 top-1/2 transform translate-x-1/2 -translate-y-1/2 z-10">
+                <div className="h-px w-4 bg-muted-foreground/30"></div>
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </nav>
   );
 };
 

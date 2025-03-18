@@ -8,6 +8,7 @@ import DedupeConfig from '@/components/DedupeConfig';
 import ResultsView from '@/components/ResultsView';
 import ProgressIndicator from '@/components/ProgressIndicator';
 import StepIndicator from '@/components/StepIndicator';
+import JobsManager from '@/components/JobsManager';
 import { 
   FileData, 
   MappedColumn, 
@@ -21,6 +22,7 @@ import {
 } from '@/lib/types';
 import { loadDatabaseData, pollDedupeStatus } from '@/lib/sqlService';
 import { cancelSplinkJob } from '@/lib/splinkAdapter';
+import { storeJobReference, markJobCompleted } from '@/lib/apiService';
 
 const Index = () => {
   const [currentStep, setCurrentStep] = useState<Step>('upload');
@@ -114,6 +116,12 @@ const Index = () => {
       const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const startTime = Date.now();
       
+      storeJobReference(jobId, {
+        configName: config.name || 'Custom Configuration',
+        dataSource: fileData.fileType,
+        rowCount: fileData.data.length
+      });
+      
       const worker = new Worker(new URL('@/lib/dataProcessingWorker.ts', import.meta.url), { type: 'module' });
       
       worker.onmessage = (event) => {
@@ -129,7 +137,8 @@ const Index = () => {
             const completeResult: DedupeResult = {
               ...progress.result,
               processingTimeMs,
-              startTime
+              startTime,
+              jobId
             };
             
             setDedupeResult(completeResult);
@@ -137,6 +146,9 @@ const Index = () => {
             goToNextStep('results');
             worker.terminate();
             setIsProcessing(false);
+            
+            markJobCompleted(jobId);
+            
             toast.success(`Deduplication complete! Found ${progress.result.duplicateRows} duplicate records.`);
           }
         } else if (type === 'result' && result) {
@@ -146,7 +158,8 @@ const Index = () => {
           const resultWithTime: DedupeResult = {
             ...result,
             processingTimeMs,
-            startTime
+            startTime,
+            jobId
           };
           
           setDedupeResult(resultWithTime);
@@ -154,6 +167,9 @@ const Index = () => {
           goToNextStep('results');
           worker.terminate();
           setIsProcessing(false);
+          
+          markJobCompleted(jobId);
+          
           toast.success(`Deduplication complete! Found ${result.duplicateRows} duplicate records.`);
         } else if (type === 'error') {
           console.error('Worker error:', error);
@@ -165,6 +181,9 @@ const Index = () => {
           });
           worker.terminate();
           setIsProcessing(false);
+          
+          markJobCompleted(jobId);
+          
           toast.error(`Error during deduplication process: ${error}`);
         } else if (type === 'splink-job' && data?.jobId) {
           const initialProcessingTime = Date.now() - startTime;
@@ -192,7 +211,8 @@ const Index = () => {
               const completeResult: DedupeResult = {
                 ...progressUpdate.result,
                 processingTimeMs: totalProcessingTime,
-                startTime
+                startTime,
+                jobId: data.jobId
               };
               
               setDedupeResult(completeResult);
@@ -200,14 +220,23 @@ const Index = () => {
               goToNextStep('results');
               worker.terminate();
               setIsProcessing(false);
+              
+              markJobCompleted(data.jobId);
+              
               toast.success(`Deduplication complete! Check results tab for details.`);
             } else if (progressUpdate.status === 'failed') {
               worker.terminate();
               setIsProcessing(false);
+              
+              markJobCompleted(data.jobId);
+              
               toast.error(`Deduplication failed: ${progressUpdate.error || 'Unknown error'}`);
             } else if (progressUpdate.status === 'cancelled') {
               worker.terminate();
               setIsProcessing(false);
+              
+              markJobCompleted(data.jobId);
+              
               toast.info(`Deduplication job was cancelled.`);
             }
           });
@@ -399,6 +428,9 @@ const Index = () => {
             <p>No results available yet</p>
           </div>
         );
+
+      case 'jobs':
+        return <JobsManager />;
         
       default:
         return null;
