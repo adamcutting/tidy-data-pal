@@ -189,6 +189,7 @@ export type DedupeProgress = {
   debugInfo?: string;
   stage?: string;
   result?: DedupeResult;
+  warning?: string; // Added warning property for local processing fallback alerts
 };
 
 export interface WorkerReadyMessage {
