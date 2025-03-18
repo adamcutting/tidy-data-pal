@@ -29,6 +29,7 @@ export interface DedupeConfig {
   blockingColumns: string[];
   derivedBlockingRules?: DerivedBlockingRule[];
   threshold: number;
+  uniqueIdColumn?: string;
   useSplink: boolean;
   splinkParams?: {
     termFrequencyAdjustments?: boolean;

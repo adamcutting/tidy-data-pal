@@ -37,6 +37,7 @@ const Index = () => {
     percentage: 0,
     statusMessage: 'Waiting to start...'
   });
+  const [uniqueIdColumn, setUniqueIdColumn] = useState<string | undefined>(undefined);
 
   const handleFileLoaded = useCallback((data: FileData) => {
     setFileData(data);
@@ -82,8 +83,9 @@ const Index = () => {
     }
   }, []);
 
-  const handleMappingComplete = useCallback((columns: MappedColumn[]) => {
+  const handleMappingComplete = useCallback((columns: MappedColumn[], idColumn?: string) => {
     setMappedColumns(columns);
+    setUniqueIdColumn(idColumn);
     markStepCompleted('mapping');
     goToNextStep('config');
   }, []);
@@ -92,9 +94,11 @@ const Index = () => {
     const fullConfig: DedupeConfigType = {
       ...config,
       dataSource: fileData?.fileType === 'database' ? 'database' : 'file',
+      uniqueIdColumn: uniqueIdColumn,
       useSplink: true,
       splinkParams: {
         ...config.splinkParams,
+        uniqueIdColumn: uniqueIdColumn
       }
     };
     
@@ -267,7 +271,7 @@ const Index = () => {
         }
       });
     }
-  }, [fileData, mappedColumns]);
+  }, [fileData, mappedColumns, uniqueIdColumn]);
 
   const handleRefreshStatus = useCallback(() => {
     if (dedupeResult?.jobId) {
@@ -387,6 +391,7 @@ const Index = () => {
             mappedColumns={mappedColumns} 
             onConfigComplete={handleConfigComplete}
             isProcessing={isProcessing}
+            uniqueIdColumn={uniqueIdColumn}
           />
         ) : (
           <div className="text-center">

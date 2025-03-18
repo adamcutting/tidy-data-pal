@@ -3,7 +3,7 @@
  * Utility functions for detecting and handling Spark-related features
  */
 
-import { DedupeProgress } from './types';
+import { DedupeProgress, SparkConfig } from './types';
 
 /**
  * Determines if a job is using Apache Spark based on its progress information
@@ -45,4 +45,25 @@ export const getSparkConfigDescription = (sparkConfig?: any): string => {
   }
   
   return parts.length > 0 ? parts.join(', ') : 'Custom Spark configuration';
+};
+
+/**
+ * Prepares Spark configuration for API submission
+ * @param sparkConfig The raw Spark configuration 
+ * @returns Formatted Spark configuration
+ */
+export const prepareSparkConfig = (sparkConfig?: SparkConfig): any | undefined => {
+  if (!sparkConfig || !sparkConfig.enabled) return undefined;
+  
+  return {
+    enabled: true,
+    master_url: sparkConfig.masterUrl || 'local[*]',
+    app_name: sparkConfig.appName || 'DataHQ-Splink',
+    executor_memory: sparkConfig.executorMemory || '4g',
+    driver_memory: sparkConfig.driverMemory || '2g',
+    num_executors: sparkConfig.numExecutors || 2,
+    executor_cores: sparkConfig.executorCores || 2,
+    shuffle_partitions: sparkConfig.shufflePartitions || 100,
+    local_dir: sparkConfig.localDir || null
+  };
 };

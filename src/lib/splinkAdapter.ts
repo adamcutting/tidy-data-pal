@@ -131,9 +131,12 @@ export const formatDataForSplinkApi = async (
     console.log(`Included columns (${includedColumns.length}):`, includedColumns);
 
     // Use the configured uniqueIdColumn if specified, otherwise use the first column
-    const uniqueIdColumn = config.splinkParams?.uniqueIdColumn || includedColumns[0];
+    const uniqueIdColumn = config.uniqueIdColumn || config.splinkParams?.uniqueIdColumn || includedColumns[0];
     console.log(`Using unique ID column: ${uniqueIdColumn}`);
 
+    // Check if we need to generate a new unique ID column
+    const generateUniqueId = uniqueIdColumn === 'generated_unique_id';
+    
     // Format blocking columns
     const blockingFields = config.blockingColumns || [];
     console.log(`Blocking fields (${blockingFields.length}):`, blockingFields);
@@ -209,9 +212,14 @@ export const formatDataForSplinkApi = async (
       console.log(`${logPrefix} Adding unique IDs if needed...`);
       // Add a simple unique ID if needed for this chunk
       const processedChunk = chunk.map((row, index) => {
-        // If the unique ID column doesn't exist in the data, add it
-        if (!row[uniqueIdColumn]) {
-          return { ...row, [uniqueIdColumn]: `id-${startIdx + index}` };
+        if (generateUniqueId) {
+          // Generate a new unique ID
+          return { ...row, generated_unique_id: `id-${startIdx + index}` };
+        } else {
+          // If using an existing column but it's empty, add a value
+          if (!row[uniqueIdColumn]) {
+            return { ...row, [uniqueIdColumn]: `id-${startIdx + index}` };
+          }
         }
         return row;
       });
@@ -241,7 +249,7 @@ export const formatDataForSplinkApi = async (
       output_dir?: string;
       spark_config?: any;
     } = {
-      unique_id_column: uniqueIdColumn,
+      unique_id_column: generateUniqueId ? 'generated_unique_id' : uniqueIdColumn,
       blocking_fields: blockingFields,
       match_fields: matchFields,
       input_data: processedData,
@@ -438,9 +446,18 @@ export const submitSplinkJob = async (
 ): Promise<{ success: boolean; jobId?: string; message: string }> => {
   try {
     // Prepare the request body
-    const requestBody = {
+    const requestBody: {
+      input_data: any[];
+      unique_id_column: string;
+      blocking_fields: string[];
+      match_fields: any[];
+      job_id: string;
+      total_rows: number;
+      chunk_size?: number;
+      spark_config?: any;
+    } = {
       input_data: data,
-      unique_id_column: config.uniqueIdColumn || Object.keys(data[0])[0],
+      unique_id_column: config.uniqueIdColumn || config.splinkParams?.uniqueIdColumn || Object.keys(data[0])[0],
       blocking_fields: config.blockingColumns || [],
       match_fields: config.comparisons.map((comp: any) => ({
         field: comp.column,
