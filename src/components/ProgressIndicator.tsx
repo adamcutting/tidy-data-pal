@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -148,6 +149,9 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       setIsCancelling(true);
       toast.info("Requesting job cancellation...");
       onCancel();
+    } else {
+      toast.error("Cancel functionality is not available.");
+      console.error("Cancel function is not defined");
     }
   };
 
@@ -167,6 +171,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
 
   const isProcessing = progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'cancelled';
   const isCompleted = progress.status === 'completed';
+  const canCancel = isProcessing && typeof onCancel === 'function';
 
   return (
     <Card className="w-full">
@@ -260,17 +265,19 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
               <p className="text-xs text-red-600 dark:text-red-500">
                 The application appears to be frozen. Processing large datasets may cause temporary unresponsiveness.
               </p>
-              <div className="mt-2">
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  className="w-full text-xs"
-                  onClick={onCancel}
-                  disabled={isCancelling}
-                >
-                  {isCancelling ? 'Cancelling...' : 'Cancel Processing'}
-                </Button>
-              </div>
+              {canCancel && (
+                <div className="mt-2">
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    className="w-full text-xs"
+                    onClick={handleCancelJob}
+                    disabled={isCancelling}
+                  >
+                    {isCancelling ? 'Cancelling...' : 'Cancel Processing'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           
@@ -311,6 +318,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
                 <p>Time since update: {Math.floor((Date.now() - lastProgressUpdate)/1000)}s</p>
                 <p>Stalled: {stalled ? 'Yes' : 'No'}</p>
                 <p>Frozen time: {frozenTime}s</p>
+                <p>Cancel function available: {canCancel ? 'Yes' : 'No'}</p>
                 {progress.debugInfo && <p>Details: {progress.debugInfo}</p>}
                 {jobId && <p>Job ID: {jobId}</p>}
               </div>
@@ -340,16 +348,20 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
       
       {isProcessing && (
         <CardFooter className="pt-0 flex justify-between">
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleCancelJob}
-            disabled={isCancelling}
-            className="flex items-center gap-1 text-xs"
-          >
-            <XCircle className="h-3 w-3" />
-            {isCancelling ? 'Cancelling...' : 'Cancel Job'}
-          </Button>
+          {canCancel ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCancelJob}
+              disabled={isCancelling}
+              className="flex items-center gap-1 text-xs"
+            >
+              <XCircle className="h-3 w-3" />
+              {isCancelling ? 'Cancelling...' : 'Cancel Job'}
+            </Button>
+          ) : (
+            <div></div>
+          )}
           
           <Button
             variant="ghost"
