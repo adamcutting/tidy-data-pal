@@ -3,7 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, XCircle, Info, Cpu } from "lucide-react";
+import { RefreshCw, AlertTriangle, XCircle, Info, Cpu, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export interface DedupeProgress {
@@ -15,7 +15,7 @@ export interface DedupeProgress {
   totalRecords?: number;
   error?: string;
   debugInfo?: string;
-  stage?: string; // Added for more detailed progress tracking
+  stage?: string;
   currentChunk?: number;
   totalChunks?: number;
 }
@@ -166,6 +166,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
   }, [progress.status]);
 
   const isProcessing = progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'cancelled';
+  const isCompleted = progress.status === 'completed';
 
   return (
     <Card className="w-full">
@@ -175,6 +176,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             size="md" 
             variant={stalled ? "destructive" : "default"} 
           />}
+          {isCompleted && <CheckCircle className="h-5 w-5 text-green-500" />}
           <span>Deduplication Progress</span>
           <span className={`text-sm font-normal ${getStatusColor()}`}>
             {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
@@ -193,10 +195,13 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Progress value={progress.percentage} className="h-2 mb-2" />
+        <Progress 
+          value={progress.percentage} 
+          className={`h-2 mb-2 ${isCompleted ? 'bg-green-100' : ''}`} 
+        />
         
         <div className="text-sm text-muted-foreground space-y-2">
-          <p className="font-medium flex items-center gap-2">
+          <p className={`font-medium flex items-center gap-2 ${isCompleted ? 'text-green-600' : ''}`}>
             {getStageIcon()}
             {progress.statusMessage}
             {progress.stage && <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{progress.stage}</span>}
@@ -226,7 +231,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
               </p>
               <Progress
                 value={(progress.recordsProcessed / progress.totalRecords) * 100}
-                className="h-1 mt-1"
+                className={`h-1 mt-1 ${isCompleted ? 'bg-green-100' : ''}`}
               />
             </div>
           )}
@@ -346,6 +351,20 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ progress, jobId, 
             {isCancelling ? 'Cancelling...' : 'Cancel Job'}
           </Button>
           
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleManualRefresh}
+            className="flex items-center gap-1 text-xs"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Refresh Status
+          </Button>
+        </CardFooter>
+      )}
+      
+      {isCompleted && (
+        <CardFooter className="pt-0 flex justify-end">
           <Button
             variant="ghost"
             size="sm"

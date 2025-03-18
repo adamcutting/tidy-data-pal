@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -162,7 +163,7 @@ export type DedupeProgress = {
   totalChunks?: number;
   debugInfo?: string;
   stage?: string;
-  result?: DedupeResult;
+  result?: DedupeResult;  // Add this property to link progress updates with results
 };
 
 export interface WorkerReadyMessage {

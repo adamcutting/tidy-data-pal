@@ -120,7 +120,27 @@ const Index = () => {
         
         if (type === 'progress' && progress) {
           setProgress(progress);
+          
+          // Check if progress indicates completion and has result data
+          if (progress.status === 'completed' && progress.result) {
+            console.log('Progress indicates completion with result data, transitioning to results');
+            const processingTimeMs = Date.now() - startTime;
+            
+            const completeResult: DedupeResult = {
+              ...progress.result,
+              processingTimeMs,
+              startTime
+            };
+            
+            setDedupeResult(completeResult);
+            markStepCompleted('progress');
+            goToNextStep('results');
+            worker.terminate();
+            setIsProcessing(false);
+            toast.success(`Deduplication complete! Found ${progress.result.duplicateRows} duplicate records.`);
+          }
         } else if (type === 'result' && result) {
+          console.log('Received direct result message, transitioning to results');
           const processingTimeMs = Date.now() - startTime;
           
           const resultWithTime: DedupeResult = {
@@ -166,6 +186,7 @@ const Index = () => {
             setProgress(progressUpdate);
             
             if (progressUpdate.status === 'completed' && progressUpdate.result) {
+              console.log('Poll found completed status with result, transitioning to results');
               const totalProcessingTime = Date.now() - startTime;
               
               const completeResult: DedupeResult = {
@@ -230,6 +251,7 @@ const Index = () => {
         setProgress(updatedProgress);
         
         if (updatedProgress.status === 'completed' && updatedProgress.result) {
+          console.log('Refresh detected completed status, transitioning to results');
           setDedupeResult(prev => {
             if (!prev) return updatedProgress.result;
             
@@ -290,6 +312,29 @@ const Index = () => {
     setCurrentStep(step);
   }, []);
 
+  // Add a new function to manually transition to results when needed
+  const forceTransitionToResults = useCallback(() => {
+    if (progress.status === 'completed' && dedupeResult) {
+      console.log('Manually forcing transition to results page');
+      markStepCompleted('progress');
+      goToNextStep('results');
+      toast.success('Showing completed results.');
+    }
+  }, [progress.status, dedupeResult]);
+
+  // Add an effect to monitor for completed status but stuck on progress page
+  useEffect(() => {
+    if (currentStep === 'progress' && progress.status === 'completed' && dedupeResult) {
+      console.log('Detected completed status while on progress page, scheduling transition');
+      // Schedule transition after a short delay to ensure UI updates
+      const timer = setTimeout(() => {
+        forceTransitionToResults();
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, progress.status, dedupeResult, forceTransitionToResults]);
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 'upload':
@@ -332,6 +377,16 @@ const Index = () => {
               onRefresh={handleRefreshStatus}
               onCancel={handleCancelJob}
             />
+            {progress.status === 'completed' && (
+              <div className="mt-4 flex justify-center">
+                <Button 
+                  onClick={forceTransitionToResults} 
+                  className="bg-green-500 hover:bg-green-600"
+                >
+                  View Results
+                </Button>
+              </div>
+            )}
           </div>
         );
         

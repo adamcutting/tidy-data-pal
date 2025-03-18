@@ -1,3 +1,4 @@
+
 import { DedupeConfig, MappedColumn, DedupeProgress, WorkerOutboundMessage } from './types';
 import { deduplicateData as performDeduplication } from './dedupeService';
 
@@ -50,6 +51,7 @@ import { deduplicateData as performDeduplication } from './dedupeService';
         });
       }, optimizePostcodeProcessing)
         .then(result => {
+          // Send progress update for chunk completion
           sendProgress({
             status: 'completed',
             percentage: 90 + (i / totalChunks) * 10,
@@ -59,9 +61,18 @@ import { deduplicateData as performDeduplication } from './dedupeService';
             chunked: true,
             totalChunks: totalChunks,
             currentChunk: i + 1,
-            stage: 'chunk-complete'
+            stage: 'chunk-complete',
+            result: i === totalChunks - 1 ? {
+              originalRows: data.length,
+              uniqueRows: result.uniqueRows,
+              duplicateRows: result.duplicateRows,
+              clusters: result.clusters,
+              processedData: result.processedData,
+              flaggedData: result.flaggedData
+            } : undefined
           });
           
+          // If this is the last chunk, also send a result message
           if (i === totalChunks - 1) {
             postMessage({
               type: 'result',
@@ -127,12 +138,14 @@ import { deduplicateData as performDeduplication } from './dedupeService';
             // Simulate processing with progress updates
             for (let i = 0; i <= 10; i++) {
               sendProgress({
-                status: 'processing',
-                percentage: 20 + (i * 7),
-                statusMessage: `Processing with Splink (${i * 10}%)...`,
+                status: i < 10 ? 'processing' : 'completed',
+                percentage: 20 + (i * 8),
+                statusMessage: i < 10 
+                  ? `Processing with Splink (${i * 10}%)...` 
+                  : 'Deduplication completed successfully.',
                 recordsProcessed: Math.floor(data.length * (i / 10)),
                 totalRecords: data.length,
-                stage: 'splink-processing'
+                stage: i < 10 ? 'splink-processing' : 'complete'
               });
               
               await new Promise(resolve => setTimeout(resolve, 300));
@@ -164,17 +177,31 @@ import { deduplicateData as performDeduplication } from './dedupeService';
               };
             });
             
-            // Send final result
+            // Send progress with result included
+            const finalResult = {
+              originalRows: data.length,
+              uniqueRows: deduplicatedData.length,
+              duplicateRows: data.length - deduplicatedData.length,
+              clusters,
+              processedData: deduplicatedData,
+              flaggedData
+            };
+            
+            // Send completion progress with result
+            sendProgress({
+              status: 'completed',
+              percentage: 100,
+              statusMessage: 'Deduplication completed successfully.',
+              recordsProcessed: data.length,
+              totalRecords: data.length,
+              stage: 'complete',
+              result: finalResult
+            });
+            
+            // Also send final result message
             postMessage({
               type: 'result',
-              result: {
-                originalRows: data.length,
-                uniqueRows: deduplicatedData.length,
-                duplicateRows: data.length - deduplicatedData.length,
-                clusters,
-                processedData: deduplicatedData,
-                flaggedData
-              }
+              result: finalResult
             } as WorkerOutboundMessage);
           }
         } catch (error) {
@@ -202,8 +229,29 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     jobId: string,
     optimizePostcodeProcessing: boolean
   ) {
-    performDeduplication(data, mappedColumns, config, sendProgress, optimizePostcodeProcessing)
+    performDeduplication(data, mappedColumns, config, (progress) => {
+      // Ensure the final progress update includes the result if it's complete
+      if (progress.status === 'completed') {
+        // The worker will handle this result in the then() block below
+        // but we need to make sure progress updates include the result
+        sendProgress(progress);
+      } else {
+        sendProgress(progress);
+      }
+    }, optimizePostcodeProcessing)
       .then(result => {
+        // Send a final progress update with the result
+        sendProgress({
+          status: 'completed',
+          percentage: 100,
+          statusMessage: 'Deduplication completed successfully.',
+          recordsProcessed: data.length,
+          totalRecords: data.length,
+          stage: 'complete',
+          result: result
+        });
+        
+        // Also send the result message
         postMessage({
           type: 'result',
           result: result
