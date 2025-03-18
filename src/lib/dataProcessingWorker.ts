@@ -232,7 +232,24 @@ import { deduplicateData as performDeduplication } from './dedupeService';
     optimizePostcodeProcessing: boolean,
     splinkSettings?: SplinkSettings
   ) {
+    // Inform about local processing fallback
+    sendProgress({
+      status: 'processing',
+      percentage: 15,
+      statusMessage: 'Using local deduplication (Splink API not accessible)',
+      recordsProcessed: 0,
+      totalRecords: data.length,
+      stage: 'local-fallback',
+      // Add a warning flag to indicate we're using local fallback
+      warning: 'Using local deduplication instead of Splink API. Results may be less accurate.'
+    });
+    
     performDeduplication(data, mappedColumns, config, (progress) => {
+      // Add the fallback warning to all progress updates
+      if (!progress.warning) {
+        progress.warning = 'Using local deduplication instead of Splink API. Results may be less accurate.';
+      }
+      
       // Ensure the final progress update includes the result if it's complete
       if (progress.status === 'completed') {
         // The worker will handle this result in the then() block below
@@ -247,17 +264,19 @@ import { deduplicateData as performDeduplication } from './dedupeService';
         sendProgress({
           status: 'completed',
           percentage: 100,
-          statusMessage: 'Deduplication completed successfully.',
+          statusMessage: 'Deduplication completed successfully (local processing).',
           recordsProcessed: data.length,
           totalRecords: data.length,
           stage: 'complete',
-          result: result
+          result: result,
+          warning: 'Results are from local deduplication and may be less accurate than Splink API.'
         });
         
         // Also send the result message
         postMessage({
           type: 'result',
-          result: result
+          result: result,
+          warning: 'Results are from local deduplication and may be less accurate than Splink API.'
         } as WorkerOutboundMessage);
       })
       .catch(error => {

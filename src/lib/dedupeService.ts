@@ -886,4 +886,3 @@ export const downloadCSV = (csvData: string, fileName: string): void => {
   link.click();
   document.body.removeChild(link);
 };
-
