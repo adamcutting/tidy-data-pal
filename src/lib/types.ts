@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -29,7 +30,7 @@ export interface DedupeConfig {
   blockingColumns: string[];
   derivedBlockingRules?: DerivedBlockingRule[];
   threshold: number;
-  uniqueIdColumn?: string;
+  uniqueIdColumn?: string; // Ensure this is properly defined
   useSplink: boolean;
   splinkParams?: {
     termFrequencyAdjustments?: boolean;

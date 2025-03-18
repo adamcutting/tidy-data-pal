@@ -1,3 +1,4 @@
+
 import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress, WorkerOutboundMessage, SparkConfig } from './types';
 
 /**
@@ -21,6 +22,7 @@ export const formatDataForSplinkApi = async (
 }> => {
   // Log the start of processing
   console.log(`Starting formatDataForSplinkApi with ${data.length} records`);
+  console.log('Config uniqueIdColumn:', config.uniqueIdColumn);
   
   if (config.useWebWorker !== false && window.Worker) {
     return new Promise((resolve, reject) => {
@@ -236,7 +238,7 @@ export const formatDataForSplinkApi = async (
     const jobId = `job_${new Date().getTime()}_${Math.random().toString(36).substring(2, 10)}`;
     console.log(`Generated job ID: ${jobId}`);
 
-    // Create the payload
+    // Create the payload - explicit type declaration to include all possible properties
     console.log('Creating payload for API...');
     const payload: {
       unique_id_column: string;
@@ -255,7 +257,7 @@ export const formatDataForSplinkApi = async (
       input_data: processedData,
       job_id: jobId, // Add the job ID to the payload
       chunk_size: chunkSize, // Add chunk size for backend reference
-      total_rows: data.length // Add total rows for backend chunking
+      total_rows: data.length, // Add total rows for backend chunking
     };
 
     // Add output directory if specified in settings

@@ -59,6 +59,7 @@ interface DedupeConfigProps {
   mappedColumns: MappedColumn[];
   onConfigComplete: (config: DedupeConfigType) => void;
   isProcessing: boolean;
+  uniqueIdColumn?: string; // Add this to accept uniqueIdColumn prop
 }
 
 interface SplinkSettingsProps {
@@ -69,7 +70,8 @@ interface SplinkSettingsProps {
 const DedupeConfig: React.FC<DedupeConfigProps> = ({ 
   mappedColumns, 
   onConfigComplete, 
-  isProcessing 
+  isProcessing,
+  uniqueIdColumn 
 }) => {
   const [savedConfigs, setSavedConfigs] = useState(getConfigurations());
   const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
@@ -78,7 +80,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
     setSavedConfigs(getConfigurations());
   }, []);
 
-  // Define form with react-hook-form
+  // Define form with react-hook-form and initialize with uniqueIdColumn if provided
   const form = useForm<DedupeConfigType>({
     defaultValues: {
       name: '',
@@ -86,6 +88,7 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
       blockingColumns: [],
       derivedBlockingRules: [],
       threshold: 0.8,
+      uniqueIdColumn: uniqueIdColumn, // Set the uniqueIdColumn from props
       useSplink: true, // Default to true
       splinkParams: {
         termFrequencyAdjustments: true,
@@ -98,10 +101,12 @@ const DedupeConfig: React.FC<DedupeConfigProps> = ({
     }
   });
 
-  const { fields: comparisonFields, append: comparisonAppend, remove: comparisonRemove } = useFieldArray({
-    control: form.control,
-    name: "comparisons"
-  });
+  // Update uniqueIdColumn when prop changes
+  useEffect(() => {
+    if (uniqueIdColumn) {
+      form.setValue('uniqueIdColumn', uniqueIdColumn);
+    }
+  }, [uniqueIdColumn, form]);
 
   // Fix the type issue with blockingColumns by using the correct generic type
   const { fields: blockingFields, append: blockingAppend, remove: blockingRemove } = useFieldArray({
