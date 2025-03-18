@@ -1,3 +1,4 @@
+
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -152,7 +153,7 @@ export interface DedupeJob {
 export interface ActiveJob {
   jobId: string;
   startTime: number;
-  status?: 'running' | 'completed' | 'failed' | 'cancelled';
+  status?: 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting' | 'connecting' | 'loading' | 'processing' | 'blocked' | 'clustering';
   progress?: DedupeProgress;
   configName?: string;
   dataSource?: string;

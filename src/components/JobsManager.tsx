@@ -43,13 +43,15 @@ const JobsManager: React.FC = () => {
               let latestProgress: DedupeProgress | undefined;
               await pollDedupeStatus(job.jobId, (progress) => {
                 latestProgress = progress;
-              }, false); // false means don't start continuous polling
+              });
               
+              // Ensure we return an object that matches the ActiveJob type
               return {
                 ...job,
                 progress: latestProgress || job.progress,
+                // Make sure status is one of the allowed values in ActiveJob
                 status: latestProgress?.status || job.status || 'running'
-              };
+              } as ActiveJob; // Force type to ensure compatibility
             } catch (error) {
               console.error(`Error updating progress for job ${job.jobId}:`, error);
             }
@@ -58,7 +60,8 @@ const JobsManager: React.FC = () => {
         })
       );
       
-      setJobs(jobsWithProgress);
+      // Fix: Ensure we're setting a valid ActiveJob[] array
+      setJobs(jobsWithProgress as ActiveJob[]);
     } catch (error) {
       console.error('Error loading jobs:', error);
       toast.error('Failed to load active jobs');
