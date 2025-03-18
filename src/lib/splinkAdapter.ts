@@ -230,7 +230,17 @@ export const formatDataForSplinkApi = async (
 
     // Create the payload
     console.log('Creating payload for API...');
-    const payload = {
+    const payload: {
+      unique_id_column: string;
+      blocking_fields: string[];
+      match_fields: { field: string; type: string }[];
+      input_data: any[];
+      job_id: string;
+      chunk_size?: number;
+      total_rows: number;
+      output_dir?: string;
+      spark_config?: any;
+    } = {
       unique_id_column: uniqueIdColumn,
       blocking_fields: blockingFields,
       match_fields: matchFields,
@@ -242,14 +252,14 @@ export const formatDataForSplinkApi = async (
 
     // Add output directory if specified in settings
     if (config.splinkSettings?.outputDir) {
-      payload['output_dir'] = config.splinkSettings.outputDir;
+      payload.output_dir = config.splinkSettings.outputDir;
       console.log(`Using output directory: ${config.splinkSettings.outputDir}`);
     }
     
     // Add Spark configuration if enabled
     if (config.splinkParams?.useSpark && config.splinkSettings?.sparkConfig?.enabled) {
       console.log('Adding Spark configuration to payload');
-      payload['spark_config'] = {
+      payload.spark_config = {
         enabled: true,
         master_url: config.splinkSettings.sparkConfig.masterUrl,
         app_name: config.splinkSettings.sparkConfig.appName,
