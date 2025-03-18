@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,7 @@ import { Progress } from '@/components/ui/progress';
 const JobsManager: React.FC = () => {
   const [jobs, setJobs] = useState<ActiveJob[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isApiAvailable, setIsApiAvailable] = useState<boolean>(true);
   const [refreshInterval, setRefreshInterval] = useState<number | null>(null);
   const navigate = useNavigate();
 
@@ -23,12 +25,15 @@ const JobsManager: React.FC = () => {
       // Get locally tracked jobs from localStorage
       const localJobs = getLocalJobs();
       
-      // Also try to get active jobs from the server
+      // Try to get active jobs from the server
       let serverJobs: ActiveJob[] = [];
       try {
-        serverJobs = await getActiveJobs();
+        if (isApiAvailable) {
+          serverJobs = await getActiveJobs();
+        }
       } catch (error) {
         console.error('Could not fetch server jobs:', error);
+        setIsApiAvailable(false);
         // Continue with local jobs if server jobs can't be fetched
       }
       
@@ -41,9 +46,17 @@ const JobsManager: React.FC = () => {
           if (job.jobId) {
             try {
               let latestProgress: DedupeProgress | undefined;
-              await pollDedupeStatus(job.jobId, (progress) => {
-                latestProgress = progress;
-              });
+              
+              // Only try to poll status if the API is available
+              if (isApiAvailable) {
+                try {
+                  await pollDedupeStatus(job.jobId, (progress) => {
+                    latestProgress = progress;
+                  });
+                } catch (error) {
+                  console.log(`Could not poll status for job ${job.jobId}:`, error);
+                }
+              }
               
               // Ensure we return an object that matches the ActiveJob type
               return {
@@ -51,7 +64,7 @@ const JobsManager: React.FC = () => {
                 progress: latestProgress || job.progress,
                 // Make sure status is one of the allowed values in ActiveJob
                 status: latestProgress?.status || job.status || 'running'
-              } as ActiveJob; // Force type to ensure compatibility
+              } as ActiveJob;
             } catch (error) {
               console.error(`Error updating progress for job ${job.jobId}:`, error);
             }
@@ -108,6 +121,12 @@ const JobsManager: React.FC = () => {
   const handleCancelJob = async (jobId: string) => {
     try {
       toast.info(`Attempting to cancel job ${jobId}...`);
+      
+      // Check if API is available before attempting to cancel
+      if (!isApiAvailable) {
+        toast.error("Cannot cancel job: API server not available");
+        return;
+      }
       
       const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/deduplicate';
       const apiKey = process.env.REACT_APP_API_KEY;
@@ -195,6 +214,11 @@ const JobsManager: React.FC = () => {
           </CardTitle>
           <CardDescription>
             View and manage currently running deduplication jobs
+            {!isApiAvailable && (
+              <div className="mt-2 text-amber-600 text-sm border border-amber-300 bg-amber-50 p-2 rounded">
+                Note: API server not available. Only showing locally tracked jobs.
+              </div>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -269,7 +293,7 @@ const JobsManager: React.FC = () => {
                             <ExternalLink className="h-3 w-3 mr-1" />
                             View
                           </Button>
-                          {job.status !== 'completed' && job.status !== 'cancelled' && (
+                          {job.status !== 'completed' && job.status !== 'cancelled' && isApiAvailable && (
                             <Button
                               variant="destructive"
                               size="sm"
