@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Download, FileCheck, Calculator, ArrowRight, BarChart3, Filter, Clock, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import {
 import { DedupeResult, FileData, DownloadFormat } from '@/lib/types';
 import { convertToCSV, downloadCSV } from '@/lib/dedupeService';
 import { pollDedupeStatus } from '@/lib/sqlService';
+import { toast } from 'sonner';
 
 interface ResultsViewProps {
   result: DedupeResult;
@@ -49,8 +51,15 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData, onRefreshSt
     } else {
       console.warn('No valid processed data available in results');
       setHasProcessedData(false);
+      
+      // If we have a job ID but no data, automatically trigger a refresh
+      if (result?.jobId && onRefreshStatus) {
+        console.log('Automatically refreshing status for job:', result.jobId);
+        setTimeout(() => onRefreshStatus(), 1000);
+        toast.info('Waiting for results data. Refreshing automatically...');
+      }
     }
-  }, [result]);
+  }, [result, onRefreshStatus]);
 
   // Start a timer for jobs that are still processing
   useEffect(() => {
@@ -59,6 +68,13 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData, onRefreshSt
     if (!hasProcessedData && result?.jobId) {
       interval = window.setInterval(() => {
         setElapsedSeconds(prev => prev + 1);
+        
+        // Auto-refresh every 5 seconds if we have a refresh function
+        if (elapsedSeconds > 0 && elapsedSeconds % 5 === 0 && onRefreshStatus) {
+          console.log('Auto-refreshing status after 5 seconds');
+          onRefreshStatus();
+          setLastRefreshed(new Date());
+        }
       }, 1000);
     }
     
@@ -67,7 +83,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData, onRefreshSt
         clearInterval(interval);
       }
     };
-  }, [hasProcessedData, result?.jobId]);
+  }, [hasProcessedData, result?.jobId, elapsedSeconds, onRefreshStatus]);
 
   const handleRefresh = () => {
     if (onRefreshStatus) {
@@ -181,7 +197,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData, onRefreshSt
               
               <div className="bg-amber-50 dark:bg-amber-950/20 p-3 rounded border border-amber-200 dark:border-amber-900 mt-4">
                 <p className="text-sm text-amber-700 dark:text-amber-400">
-                  The deduplication is still running. You can refresh to check the status or return to this page later.
+                  The deduplication results are loading. Automatic refresh is enabled, or you can manually refresh to check the status.
                 </p>
               </div>
             </div>
@@ -350,3 +366,4 @@ const ResultsView: React.FC<ResultsViewProps> = ({ result, fileData, onRefreshSt
 };
 
 export default ResultsView;
+
