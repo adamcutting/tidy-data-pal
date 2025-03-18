@@ -1,5 +1,4 @@
-
-import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress, WorkerOutboundMessage } from './types';
+import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress, WorkerOutboundMessage, SparkConfig } from './types';
 
 /**
  * Prepares and formats data for the Splink API according to its expected structure
@@ -411,6 +410,99 @@ export const processSplinkResponse = (
   }
   
   throw new Error('Invalid API response format');
+};
+
+/**
+ * Prepares and submits a job to the Splink API with Spark configuration
+ * @param data Input data for deduplication
+ * @param config Deduplication configuration
+ * @param apiUrl Splink API URL
+ * @param apiKey Optional API key for authentication
+ * @returns Promise with the job submission result
+ */
+export const submitSplinkJob = async (
+  data: any[],
+  config: any,
+  apiUrl: string,
+  apiKey?: string
+): Promise<{ success: boolean; jobId?: string; message: string }> => {
+  try {
+    // Prepare the request body
+    const requestBody = {
+      input_data: data,
+      unique_id_column: config.uniqueIdColumn || Object.keys(data[0])[0],
+      blocking_fields: config.blockingColumns || [],
+      match_fields: config.comparisons.map((comp: any) => ({
+        field: comp.column,
+        match_type: comp.matchType,
+        threshold: comp.threshold || 0.8
+      })),
+      job_id: `splink_job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      total_rows: data.length,
+      chunk_size: config.splinkParams?.maxChunkSize || 10000,
+    };
+    
+    // Add Spark configuration if enabled
+    if (config.splinkParams?.useSpark && config.splinkSettings?.sparkConfig) {
+      const sparkConfig: SparkConfig = config.splinkSettings.sparkConfig;
+      
+      // Only include Spark config if actually enabled
+      if (sparkConfig.enabled) {
+        requestBody.spark_config = {
+          enabled: true,
+          masterUrl: sparkConfig.masterUrl || 'local[*]',
+          appName: sparkConfig.appName || 'DataHQ-Splink',
+          executorMemory: sparkConfig.executorMemory || '4g',
+          driverMemory: sparkConfig.driverMemory || '2g',
+          numExecutors: sparkConfig.numExecutors || 2,
+          executorCores: sparkConfig.executorCores || 2,
+          shufflePartitions: sparkConfig.shufflePartitions || 100,
+          localDir: sparkConfig.localDir || null
+        };
+      }
+    }
+    
+    console.log('Submitting Splink job with config:', JSON.stringify(requestBody, null, 2));
+
+    // Prepare headers
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add API key if provided
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
+
+    // Make the request to the Splink API
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody)
+    });
+
+    // Handle response
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Splink API error: ${error}`);
+    }
+
+    // Parse response
+    const result = await response.json();
+    
+    // Return formatted result
+    return {
+      success: true,
+      jobId: result.job_id,
+      message: result.message || 'Job submitted successfully'
+    };
+  } catch (error) {
+    console.error('Error submitting Splink job:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error submitting job'
+    };
+  }
 };
 
 // Helper functions
