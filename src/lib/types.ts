@@ -1,4 +1,3 @@
-
 export interface FileData {
   fileName: string;
   fileType: string;
@@ -41,6 +40,7 @@ export interface DedupeConfig {
     pythonPath?: string;
     enableLargeDatasetMode?: boolean;
     maxChunkSize?: number;
+    useSpark?: boolean;
   };
   splinkSettings?: SplinkSettings;
   dataSource: 'file' | 'database';
@@ -85,6 +85,19 @@ export interface SplinkSettings {
   scriptPath?: string;
   outputDir?: string;
   largeDatasetThreshold?: number;
+  sparkConfig?: SparkConfig;
+}
+
+export interface SparkConfig {
+  enabled: boolean;
+  masterUrl?: string;
+  appName?: string;
+  executorMemory?: string;
+  driverMemory?: string;
+  numExecutors?: number;
+  executorCores?: number;
+  shufflePartitions?: number;
+  localDir?: string;
 }
 
 export interface MySQLConfig {

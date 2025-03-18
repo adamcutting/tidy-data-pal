@@ -1,3 +1,4 @@
+
 import { DedupeConfig, DedupeResult, MappedColumn, DedupeProgress, WorkerOutboundMessage } from './types';
 
 /**
@@ -17,6 +18,7 @@ export const formatDataForSplinkApi = async (
   chunk_size?: number;
   total_rows?: number;
   output_dir?: string;
+  spark_config?: any;
 }> => {
   // Log the start of processing
   console.log(`Starting formatDataForSplinkApi with ${data.length} records`);
@@ -243,6 +245,22 @@ export const formatDataForSplinkApi = async (
     if (config.splinkSettings?.outputDir) {
       payload['output_dir'] = config.splinkSettings.outputDir;
       console.log(`Using output directory: ${config.splinkSettings.outputDir}`);
+    }
+    
+    // Add Spark configuration if enabled
+    if (config.splinkParams?.useSpark && config.splinkSettings?.sparkConfig?.enabled) {
+      console.log('Adding Spark configuration to payload');
+      payload['spark_config'] = {
+        enabled: true,
+        master_url: config.splinkSettings.sparkConfig.masterUrl,
+        app_name: config.splinkSettings.sparkConfig.appName,
+        executor_memory: config.splinkSettings.sparkConfig.executorMemory,
+        driver_memory: config.splinkSettings.sparkConfig.driverMemory,
+        num_executors: config.splinkSettings.sparkConfig.numExecutors,
+        executor_cores: config.splinkSettings.sparkConfig.executorCores,
+        shuffle_partitions: config.splinkSettings.sparkConfig.shufflePartitions,
+        local_dir: config.splinkSettings.sparkConfig.localDir
+      };
     }
 
     console.log('Payload creation complete. Ready to send to API.');
