@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Database } from 'lucide-react';
+import { Button } from "@/components/ui/button";
 import SourceSelector from '@/components/SourceSelector';
 import ColumnMapping from '@/components/ColumnMapping';
 import DedupeConfig from '@/components/DedupeConfig';
@@ -121,7 +122,6 @@ const Index = () => {
         if (type === 'progress' && progress) {
           setProgress(progress);
           
-          // Check if progress indicates completion and has result data
           if (progress.status === 'completed' && progress.result) {
             console.log('Progress indicates completion with result data, transitioning to results');
             const processingTimeMs = Date.now() - startTime;
@@ -312,7 +312,6 @@ const Index = () => {
     setCurrentStep(step);
   }, []);
 
-  // Add a new function to manually transition to results when needed
   const forceTransitionToResults = useCallback(() => {
     if (progress.status === 'completed' && dedupeResult) {
       console.log('Manually forcing transition to results page');
@@ -322,11 +321,9 @@ const Index = () => {
     }
   }, [progress.status, dedupeResult]);
 
-  // Add an effect to monitor for completed status but stuck on progress page
   useEffect(() => {
     if (currentStep === 'progress' && progress.status === 'completed' && dedupeResult) {
       console.log('Detected completed status while on progress page, scheduling transition');
-      // Schedule transition after a short delay to ensure UI updates
       const timer = setTimeout(() => {
         forceTransitionToResults();
       }, 1500);
